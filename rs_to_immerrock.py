@@ -347,7 +347,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
         'capo':      0,
         'tuning':    tuning,
         'avg_tempo': 120.0,
-        'duration':  song_length,
+        'song_length': song_length,
         'beats':     beats,
         'sections':  sections,
         'notes':     notes,

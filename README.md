@@ -95,6 +95,41 @@ Only tracks that exist in the PSARC **and contain at least one note** are genera
 
 ---
 
+## Deploying to Quest
+
+Once conversion is complete, copy each `Artist - Song Title/` folder into the `ImmerrockCustomSongs` folder on your headset. The RS2IR Converter output folder mirrors the Quest folder structure exactly, so you can sync your entire output in one operation.
+
+> Refer to the [Immerrock Custom Song Quick Guide](https://immerrock.com/custom-song-quick-guide) for the exact folder path on the Quest.
+
+### Method 1: ADB (command line)
+
+1. Enable **USB Debugging** on your Quest — Settings → System → Developer → USB Connection Dialog → always allow
+2. Connect via USB cable and confirm the prompt in-headset
+3. Copy a single song:
+   ```bash
+   adb push "Artist - Song Title" "/sdcard/ImmerrockCustomSongs/"
+   ```
+4. Or push your entire output folder at once:
+   ```bash
+   adb push ImmerrockCustomSongs/. "/sdcard/ImmerrockCustomSongs/"
+   ```
+
+### Method 2: SideQuest
+
+1. Install [SideQuest](https://sidequestvr.com/setup-howto) and connect your Quest via USB
+2. Click the **Files** icon in the toolbar
+3. Navigate to `sdcard/ImmerrockCustomSongs/`
+4. Drag and drop song folders from Windows Explorer into the SideQuest file pane
+
+### Method 3: Meta Quest Developer Hub
+
+1. Install [Meta Quest Developer Hub](https://developer.oculus.com/documentation/unity/ts-odh/) and connect your Quest via USB
+2. Open the **File Manager** tab
+3. Navigate to `ImmerrockCustomSongs/`
+4. Drag and drop song folders from Windows Explorer
+
+---
+
 ## How It Works
 
 ### 1. PSARC Extraction
