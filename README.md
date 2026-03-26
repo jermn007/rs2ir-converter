@@ -21,7 +21,7 @@ Supports Lead, Rhythm, and Bass guitar tracks with full tuning, tempo-map, and s
 vgmstream converts the WEM audio inside PSARCs to OGG. Without it, audio is skipped but everything else still converts.
 
 1. Download the latest release from [github.com/vgmstream/vgmstream/releases](https://github.com/vgmstream/vgmstream/releases)
-2. Extract **the entire zip** (not just the `.exe`) into the same folder as `rs2_to_immerrock.py`
+2. Extract **the entire zip** (not just the `.exe`) into the same folder as `rs_to_immerrock.py`
 
 All `.dll` files must be present alongside `vgmstream-cli.exe`.
 
@@ -47,10 +47,10 @@ Place `vgmstream-cli.exe` and its DLLs in the same folder.
 
 ### GUI (recommended)
 
-Double-click `rs2_to_immerrock.py`, or run:
+Double-click `rs_to_immerrock.py`, or run:
 
 ```bash
-python rs2_to_immerrock.py
+python rs_to_immerrock.py
 ```
 
 - **Select Files** — pick individual `.psarc` files
@@ -62,13 +62,13 @@ python rs2_to_immerrock.py
 
 ```bash
 # Single file
-python rs2_to_immerrock.py song.psarc
+python rs_to_immerrock.py song.psarc
 
 # Single file, custom output
-python rs2_to_immerrock.py song.psarc ./output/
+python rs_to_immerrock.py song.psarc ./output/
 
 # Entire folder of PSARCs
-python rs2_to_immerrock.py /path/to/cdlcs/ /path/to/output/
+python rs_to_immerrock.py /path/to/cdlcs/ /path/to/output/
 ```
 
 Already-converted songs (output folder contains `.mid` files) are skipped automatically, so re-running on a folder only processes new additions.
@@ -97,7 +97,7 @@ Only tracks present in the PSARC are generated.
 
 ### 1. PSARC Extraction
 
-A `.psarc` is a container archive. The table of contents (TOC) is encrypted with **AES-256-CFB** using the publicly-known RS2 PSARC key. After decryption the TOC lists every internal file; content blocks are zlib-compressed and decompressed on demand. No temporary files are written to disk.
+A `.psarc` is a container archive. The table of contents (TOC) is encrypted with **AES-256-CFB** using the publicly-known RS PSARC key. After decryption the TOC lists every internal file; content blocks are zlib-compressed and decompressed on demand. No temporary files are written to disk.
 
 ### 2. Arrangement Parsing
 
@@ -130,7 +130,7 @@ A `set_tempo` event is written at every beat boundary using the actual inter-bea
 
 **Track 1 — Notes**
 
-RS2 uses one string per channel:
+RS uses one string per channel:
 
 | Channel | String | Standard tuning |
 |---|---|---|
@@ -164,15 +164,15 @@ Additional zero-duration note-on events on Channel 15 carry per-note metadata. V
 | 30 | Chord mode trigger (every note-on tick) |
 | 31–35 | Finger placement: Index, Middle, Ring, Little, Thumb |
 
-Finger signals (31–35) are emitted for chord notes, which carry finger data from the RS2 chord template. Individual notes rarely have explicit finger assignments in RS2 CDLC data.
+Finger signals (31–35) are emitted for chord notes, which carry finger data from the RS chord template. Individual notes rarely have explicit finger assignments in RS CDLC data.
 
 **Pitch bend**
 
 - **Slides** — a 16-step linear pitch-bend sweep is emitted on the note's channel over the full sustain duration, from neutral (0) to the target semitone offset. Scale: +1280 MIDI units per semitone, matching the Immerrock reference value.
-- **Vibrato** — a sinusoidal pitch-bend sweep at 5 Hz / ±1 semitone is emitted for the duration of notes flagged with vibrato in the RS2 data. Slides take priority if both flags are present.
+- **Vibrato** — a sinusoidal pitch-bend sweep at 5 Hz / ±1 semitone is emitted for the duration of notes flagged with vibrato in the RS data. Slides take priority if both flags are present.
 - Pitch bend resets to neutral at the end of each affected note.
 
-**Timing correction** — RS2 beat timestamps are absolute seconds from the start of the audio. `_time_to_ticks` interpolates linearly between beat boundaries to place each note at the correct fractional-beat tick position.
+**Timing correction** — RS beat timestamps are absolute seconds from the start of the audio. `_time_to_ticks` interpolates linearly between beat boundaries to place each note at the correct fractional-beat tick position.
 
 ### 4. Audio Conversion
 
@@ -194,9 +194,9 @@ The DDS texture from the PSARC is converted to JPEG at up to 512 × 512 using Pi
 
 ## Known Limitations
 
-- **Finger placement on single notes** — RS2 CDLC charters rarely assign explicit finger data to individual (non-chord) notes, so finger signals are only emitted for chord notes where the data is present
+- **Finger placement on single notes** — RS CDLC charters rarely assign explicit finger data to individual (non-chord) notes, so finger signals are only emitted for chord notes where the data is present
 - **Thumb visualization** — note 35 (Thumb) is not yet visualized in Immerrock (per the developer); the signal is emitted but has no in-game effect currently
-- **Vocals** in RS2 CDLCs rarely include beat timing; `Lyrics.txt` is generated but may be empty
+- **Vocals** in RS CDLCs rarely include beat timing; `Lyrics.txt` is generated but may be empty
 - **Drop / open tunings** that go below MIDI note 0 or above 127 are clamped
 
 ---

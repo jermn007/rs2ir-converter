@@ -4,9 +4,9 @@
 ║         Rocksmith 2014 PSARC  →  Immerrock Converter                ║
 ║                                                                      ║
 ║  Usage:                                                              ║
-║    GUI mode:     python rs2_to_immerrock.py                         ║
-║    Single file:  python rs2_to_immerrock.py song.psarc [output/]    ║
-║    Folder:       python rs2_to_immerrock.py cdlcs/ [output/]        ║
+║    GUI mode:     python rs_to_immerrock.py                         ║
+║    Single file:  python rs_to_immerrock.py song.psarc [output/]    ║
+║    Folder:       python rs_to_immerrock.py cdlcs/ [output/]        ║
 ║                                                                      ║
 ║  Requirements:                                                       ║
 ║    pip install mido pillow pycryptodome                              ║
@@ -37,37 +37,37 @@ except ImportError:
 #  PSARC EXTRACTION
 # ═══════════════════════════════════════════════════════════════
 
-# RS2 PSARCs (official and CDLC) are AES-256-CFB encrypted after the
+# RS PSARCs (official and CDLC) are AES-256-CFB encrypted after the
 # 32-byte header. This key is publicly known (extracted from the game).
-_RS2_AES_KEY = bytes.fromhex(
+_RS_AES_KEY = bytes.fromhex(
     'C53DB23870A1A2F71CAE64061FDD0E1157309DC85204D4C5BFDF25090DF2572C'
 )
 
 # SNG arrangement binaries use a separate AES-256 key (PC platform only).
-_RS2_SNG_KEY_PC = bytes.fromhex(
+_RS_SNG_KEY_PC = bytes.fromhex(
     'CB648DF3D12A16BF71701414E69619EC171CCA5D2A142E3E59DE7ADDA18A3A30'
 )
 
 
-def _decrypt_rs2_psarc(raw: bytes, toc_size: int) -> bytes:
-    """Decrypt the TOC portion of an RS2 PSARC.
+def _decrypt_rs_psarc(raw: bytes, toc_size: int) -> bytes:
+    """Decrypt the TOC portion of an RS PSARC.
     Only bytes 32..toc_size are AES-256-CFB encrypted; file data blocks
     at toc_size onwards are stored as plain zlib-compressed blocks."""
     try:
         from Crypto.Cipher import AES
     except ImportError:
         raise RuntimeError(
-            "pycryptodome is required for RS2 PSARC decryption.\n"
+            "pycryptodome is required for RS PSARC decryption.\n"
             "  Run: pip install pycryptodome"
         )
     iv = b'\x00' * 16
-    cipher = AES.new(_RS2_AES_KEY, AES.MODE_CFB, iv=iv, segment_size=128)
+    cipher = AES.new(_RS_AES_KEY, AES.MODE_CFB, iv=iv, segment_size=128)
     decrypted_toc = cipher.decrypt(raw[32:toc_size])
     return raw[:32] + decrypted_toc + raw[toc_size:]
 
 
-def _decrypt_rs2_sng(data: bytes) -> bytes:
-    """Decrypt and decompress an RS2 PC SNG file into raw binary chart data.
+def _decrypt_rs_sng(data: bytes) -> bytes:
+    """Decrypt and decompress an RS PC SNG file into raw binary chart data.
 
     File layout:
         [4B magic=0x4A LE][4B platform (3=PC)][16B AES-IV][encrypted payload]
@@ -92,7 +92,7 @@ def _decrypt_rs2_sng(data: bytes) -> bytes:
     iv  = bytearray(data[8:24])   # AES IV embedded in file header
     enc = data[24:]                # encrypted payload (includes trailing signature)
 
-    ecb       = AES.new(_RS2_SNG_KEY_PC, AES.MODE_ECB)
+    ecb       = AES.new(_RS_SNG_KEY_PC, AES.MODE_ECB)
     decrypted = bytearray()
     for i in range(0, len(enc), 16):
         block     = enc[i:i + 16]
@@ -111,7 +111,7 @@ def _decrypt_rs2_sng(data: bytes) -> bytes:
 
 
 def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
-    """Parse a decrypted+decompressed RS2 SNG binary into an arrangement dict.
+    """Parse a decrypted+decompressed RS SNG binary into an arrangement dict.
 
     Returns the same structure as parse_arrangement() so the MIDI pipeline
     works transparently with either source.
@@ -389,7 +389,7 @@ class PsarcReader:
                   f"toc_size={toc_size}, toc_entry_size={toc_entry_size}")
             print(f"    [PSARC] raw header bytes 32-62: {raw[32:62].hex()}")
 
-        # ── AES decryption (RS2 PSARCs are encrypted after byte 32) ─
+        # ── AES decryption (RS PSARCs are encrypted after byte 32) ─
         # Detect encryption: read the first TOC entry's zindex; if it
         # exceeds the plausible max (file_size / block_size), the TOC
         # is encrypted and we must decrypt before parsing.
@@ -400,7 +400,7 @@ class PsarcReader:
             if self.verbose:
                 print(f"    [PSARC] zindex probe={probe_zindex} > {plausible_max}; "
                       f"TOC is AES-encrypted — decrypting...")
-            raw = _decrypt_rs2_psarc(raw, toc_size)
+            raw = _decrypt_rs_psarc(raw, toc_size)
             if self.verbose:
                 print(f"    [PSARC] decrypted; new zindex probe="
                       f"{self._read_uint32_be(raw, toc_start + 16)}")
@@ -504,18 +504,18 @@ class PsarcReader:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  RS2 XML PARSING
+#  RS XML PARSING
 # ═══════════════════════════════════════════════════════════════
 
 # Standard open-string MIDI notes (low→high) for tuning offsets
-# Standard guitar: E2 A2 D3 G3 B3 e4 (strings 5→0 in RS2)
-# RS2 string 0 = high e, string 5 = low E
+# Standard guitar: E2 A2 D3 G3 B3 e4 (strings 5→0 in RS)
+# RS string 0 = high e, string 5 = low E
 GUITAR_OPEN_STANDARD = [40, 45, 50, 55, 59, 64]  # index 0 = low E
 BASS_OPEN_STANDARD   = [28, 33, 38, 43]           # index 0 = low E
 
 
 def parse_arrangement(xml_path: str) -> dict:
-    """Parse a Rocksmith 2014 RS2 arrangement XML into a structured dict."""
+    """Parse a Rocksmith 2014 RS arrangement XML into a structured dict."""
     tree = ET.parse(xml_path)
     root = tree.getroot()
 
@@ -543,7 +543,7 @@ def parse_arrangement(xml_path: str) -> dict:
     else:
         tuning = [0] * 6
 
-    # Check <Arrangement> element first (standard in RS2 CDLCs)
+    # Check <Arrangement> element first (standard in RS CDLCs)
     arr_el = root.find('Arrangement')
     arr_type = (arr_el.text or '').lower().strip() if arr_el is not None else ''
 
@@ -599,7 +599,7 @@ def parse_arrangement(xml_path: str) -> dict:
         for n in notes_el.findall('Note'):
             t        = float_attr(n, 'time')
             sustain  = float_attr(n, 'sustain', 0.0)
-            string   = int_attr(n,  'string')    # RS2: 0=high e, 5=low E
+            string   = int_attr(n,  'string')    # RS: 0=high e, 5=low E
             fret     = int_attr(n,  'fret')
             ignore   = int_attr(n,  'ignore', 0)
             if ignore:
@@ -730,7 +730,7 @@ def _assign_beat_ticks(beats: list[dict]) -> list[dict]:
 
 def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFile:
     """
-    Convert a parsed RS2 arrangement dict to a mido MidiFile
+    Convert a parsed RS arrangement dict to a mido MidiFile
     matching the Immerrock format.
     """
     beats  = _assign_beat_ticks(arr['beats'])
@@ -738,7 +738,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     tuning = arr['tuning']
 
     # ── Pre-roll offset ───────────────────────────────────────
-    # Beat times from RS2 are in absolute audio seconds (t=0 = OGG start).
+    # Beat times from RS are in absolute audio seconds (t=0 = OGG start).
     # beats[0] may be at e.g. t=10.5s because the WEM has an intro.
     # MIDI tick 0 must equal OGG t=0, so shift all beat ticks forward
     # by the pre-roll duration (using the first beat interval as a proxy
@@ -753,20 +753,20 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
 
     # ── Open-string MIDI note for each channel ───────────────
     # Channel 0 = lowest string, channel N = Nth-from-bottom string
-    # RS2 string 0 = high e (index 5 from bottom), string 5 = low E (index 0)
+    # RS string 0 = high e (index 5 from bottom), string 5 = low E (index 0)
     if is_bass:
         num_strings = 4
         open_base   = BASS_OPEN_STANDARD[:]   # [E1, A1, D2, G2]
-        # Apply RS2 tuning (string0=G string, string3=E string in RS2 → reversed)
+        # Apply RS tuning (string0=G string, string3=E string in RS → reversed)
         for i in range(num_strings):
-            rs2_string = (num_strings - 1) - i   # channel i → RS2 string
-            open_base[i] += tuning[rs2_string]
+            rs_string = (num_strings - 1) - i   # channel i → RS string
+            open_base[i] += tuning[rs_string]
     else:
         num_strings = 6
         open_base   = GUITAR_OPEN_STANDARD[:]  # [E2, A2, D3, G3, B3, e4]
         for i in range(num_strings):
-            rs2_string = (num_strings - 1) - i
-            open_base[i] += tuning[rs2_string]
+            rs_string = (num_strings - 1) - i
+            open_base[i] += tuning[rs_string]
 
     # ── Tempo track ──────────────────────────────────────────
     mid = mido.MidiFile(type=1, ticks_per_beat=TICKS_PER_BEAT)
@@ -821,7 +821,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     VIBRATO_AMPLITUDE = int(VIBRATO_SEMITONES * PB_SEMITONE_UNITS)   # 1280
     VIBRATO_STEP_SEC  = 1.0 / (VIBRATO_RATE_HZ * 8)                 # 8 steps/cycle
 
-    # ch15 note-effect map: RS2 effect name → Immerrock MIDI note number
+    # ch15 note-effect map: RS effect name → Immerrock MIDI note number
     CH15_EFFECTS = {
         'palm_mute':   12,
         'dead':        13,
@@ -838,11 +838,11 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     note_groups: dict[tuple, list] = {}
     per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end, slide_semitones)
     for note in notes:
-        rs2_str = note['string']
+        rs_str = note['string']
         fret    = note['fret']
-        if rs2_str >= num_strings:
+        if rs_str >= num_strings:
             continue
-        channel = (num_strings - 1) - rs2_str
+        channel = (num_strings - 1) - rs_str
 
         midi_note = open_base[channel] + fret
         midi_note = max(0, min(127, midi_note))
@@ -1216,7 +1216,7 @@ def convert_psarc(psarc_path: str, output_dir: str, vgmstream: str | None) -> bo
         if not sng_bytes:
             continue
         try:
-            chart = _decrypt_rs2_sng(sng_bytes)
+            chart = _decrypt_rs_sng(sng_bytes)
             arr   = _parse_sng_binary(chart, arr_t)
             # Fill metadata from manifest
             if manifest_meta:
@@ -1432,7 +1432,7 @@ def run_gui():
     vgmstream = find_vgmstream()
 
     root = tk.Tk()
-    root.title("RS2 → Immerrock Converter")
+    root.title("RS → Immerrock Converter")
     root.geometry("680x540")
     root.configure(bg='#1e1e2e')
 
@@ -1642,9 +1642,9 @@ def main():
 
     if not psarc_files:
         print("Usage:")
-        print("  python rs2_to_immerrock.py <file.psarc> [output_folder]")
-        print("  python rs2_to_immerrock.py <input_folder> [output_folder]")
-        print("  python rs2_to_immerrock.py  (GUI mode)")
+        print("  python rs_to_immerrock.py <file.psarc> [output_folder]")
+        print("  python rs_to_immerrock.py <input_folder> [output_folder]")
+        print("  python rs_to_immerrock.py  (GUI mode)")
         sys.exit(1)
 
     vgmstream = find_vgmstream()
