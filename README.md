@@ -121,13 +121,6 @@ Once conversion is complete, copy each `Artist - Song Title/` folder into the `I
 3. Navigate to `sdcard/ImmerrockCustomSongs/`
 4. Drag and drop song folders from Windows Explorer into the SideQuest file pane
 
-### Method 3: Meta Quest Developer Hub
-
-1. Install [Meta Quest Developer Hub](https://developer.oculus.com/documentation/unity/ts-odh/) and connect your Quest via USB
-2. Open the **File Manager** tab
-3. Navigate to `ImmerrockCustomSongs/`
-4. Drag and drop song folders from Windows Explorer
-
 ---
 
 ## How It Works
