@@ -262,8 +262,14 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             skip(2)                # Slap, Pluck
             vibrato    = r_i16()   # Vibrato (non-zero = has vibrato)
             sustain    = r_f32()   # Sustain
-            skip(4)                # MaxBend
-            skip(r_i32() * 12)     # BEND_DATA_SECTION
+            skip(4)                # MaxBend (float, unused — individual steps are in BEND_DATA)
+            bend_count = r_i32()
+            bend_data  = []
+            for _ in range(bend_count):
+                b_time = r_f32()   # absolute time (same scale as note time)
+                b_step = r_f32()   # bend amount in semitones
+                skip(4)            # Unk3(short) + Unk4(byte) + Unk5(byte)
+                bend_data.append((b_time, b_step))
 
             effects = set()
             if note_mask & NOTE_MASK_PALM_MUTE: effects.add('palm_mute')
@@ -284,7 +290,8 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
                                               'finger': tmpl['fingers'][s],
                                               'effects': effects,
                                               'vibrato': vibrato,
-                                              'slide_semitones': 0})
+                                              'slide_semitones': 0,
+                                              'bend_data': bend_data})
             elif fret_id != 255:
                 # slide_semitones: signed semitone offset at end of sustain
                 slide_st = (slide_to - fret_id) if 0 <= slide_to <= 127 else 0
@@ -292,7 +299,8 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
                                   'string': string_idx, 'fret': fret_id,
                                   'finger': 0, 'effects': effects,
                                   'vibrato': vibrato,
-                                  'slide_semitones': slide_st})
+                                  'slide_semitones': slide_st,
+                                  'bend_data': bend_data})
 
         skip(r_i32() * 4)   # AverageNotesPerIteration float[]
         skip(r_i32() * 4)   # NotesInIteration1 long[]
@@ -609,7 +617,8 @@ def parse_arrangement(xml_path: str) -> dict:
             notes.append({'time': t, 'sustain': sustain,
                           'string': string, 'fret': fret,
                           'effects': _xml_effects(n), 'vibrato': 0,
-                          'slide_semitones': slide_st, 'finger': 0})
+                          'slide_semitones': slide_st, 'finger': 0,
+                          'bend_data': []})
 
     # ── Chords ───────────────────────────────────────────────
     chord_templates = []
@@ -644,7 +653,8 @@ def parse_arrangement(xml_path: str) -> dict:
                         notes.append({'time': t, 'sustain': sust,
                                       'string': s, 'fret': f,
                                       'effects': chord_efx, 'vibrato': 0,
-                                      'slide_semitones': 0, 'finger': fng})
+                                      'slide_semitones': 0, 'finger': fng,
+                                      'bend_data': []})
             elif 0 <= chord_id < len(chord_templates):
                 # Fallback: expand from ChordTemplate (no per-string sustain)
                 tmpl = chord_templates[chord_id]
@@ -655,7 +665,8 @@ def parse_arrangement(xml_path: str) -> dict:
                         notes.append({'time': t, 'sustain': sustain,
                                       'string': s, 'fret': f,
                                       'effects': chord_efx, 'vibrato': 0,
-                                      'slide_semitones': 0, 'finger': fng})
+                                      'slide_semitones': 0, 'finger': fng,
+                                      'bend_data': []})
 
     # ── Vocals (for Lyrics.txt) ───────────────────────────────
     vocals = []
@@ -816,9 +827,8 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     PB_SEMITONE_UNITS  = 1280
 
     # Vibrato constants — sinusoidal sweep centred on neutral pitch.
-    VIBRATO_RATE_HZ   = 5.0    # oscillations per second
-    VIBRATO_SEMITONES = 1.0    # peak deviation in semitones
-    VIBRATO_AMPLITUDE = int(VIBRATO_SEMITONES * PB_SEMITONE_UNITS)   # 1280
+    VIBRATO_RATE_HZ   = 5.0   # oscillations per second
+    VIBRATO_AMPLITUDE = 384   # peak deviation in PB units (~0.3 semitone), per dev
     VIBRATO_STEP_SEC  = 1.0 / (VIBRATO_RATE_HZ * 8)                 # 8 steps/cycle
 
     # ch15 note-effect map: RS effect name → Immerrock MIDI note number
@@ -836,7 +846,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     # Collect notes grouped by (channel, midi_note) to detect overlaps.
     # Also keep per-note metadata for ch15 signals and pitch bend.
     note_groups: dict[tuple, list] = {}
-    per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end, slide_semitones)
+    per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end, slide_semitones, bend_data)
     for note in notes:
         rs_str = note['string']
         fret    = note['fret']
@@ -869,6 +879,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             note['time'],
             note_end,
             note.get('slide_semitones', 0),
+            note.get('bend_data', []),
         ))
 
     # Cap off_tick to prevent same-pitch overlap.
@@ -894,7 +905,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
 
     # ch15 finger placement (notes 31–35) and note effects (notes 12–20).
     # Velocity encodes which string: (channel + 1) * 5 + 1
-    for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end, slide_semitones in per_note_meta:
+    for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end, slide_semitones, bend_data in per_note_meta:
         str_vel = (channel + 1) * 5 + 1
 
         if 1 <= finger <= 5:
@@ -907,10 +918,13 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
                 events.append((on_tick, 'on',  15, eff_note, str_vel))
                 events.append((on_tick, 'off', 15, eff_note, 0))
 
-        # Pitch bend: slides take priority over vibrato (they'd conflict).
+        # Pitch bend — slides, bends, and vibrato are mutually exclusive;
+        # slides take priority, then bends, then vibrato.
         duration = note_end - note_time
         if slide_semitones and duration > 0:
-            # Linear sweep from neutral (0) to target over the note's sustain.
+            # Slide: linear sweep from neutral to target over the sustain.
+            # Final event stays at full value (no reset) so Immerrock can
+            # draw the trail endpoint.
             SLIDE_STEPS = 16
             pb_target = max(-8192, min(8191,
                             slide_semitones * PB_SEMITONE_UNITS))
@@ -920,11 +934,20 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
                 t        = note_time + frac * duration
                 tick     = _time_to_ticks(t, beats)
                 events.append((tick, 'pb', channel, pb_value, 0))
+            # No reset — leave pitch at target value.
+        elif bend_data:
+            # Bend: follow the RS bend envelope from the SNG BEND_DATA_SECTION.
+            # Times in bend_data are absolute (same scale as note_time).
+            for b_time, b_step in bend_data:
+                pb_value = max(-8192, min(8191,
+                               int(b_step * PB_SEMITONE_UNITS)))
+                tick = _time_to_ticks(b_time, beats)
+                events.append((tick, 'pb', channel, pb_value, 0))
             # Reset to neutral after the note ends
             reset_tick = _time_to_ticks(note_end, beats)
             events.append((reset_tick, 'pb', channel, 0, 0))
         elif vibrato and duration > 0:
-            # Sinusoidal vibrato sweep.
+            # Vibrato: sinusoidal sweep for the duration of the note.
             t = note_time
             while t <= note_end:
                 phase    = (t - note_time) * VIBRATO_RATE_HZ * 2 * math.pi
