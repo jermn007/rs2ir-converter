@@ -145,6 +145,10 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
         nonlocal pos
         v = data[pos]; pos += 1; return v
 
+    def r_i8():
+        nonlocal pos
+        v = struct.unpack_from('<b', data, pos)[0]; pos += 1; return v
+
     def r_str(n):
         nonlocal pos
         raw = data[pos:pos + n]; pos += n
@@ -251,8 +255,11 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             skip(2)                # AnchorFretId + AnchorWidth
             chord_id   = r_i32()   # ChordId
             skip(4 + 8 + 4 + 6)   # ChordNotesId, PhraseIds, FingerPrints, IterNotes
-            skip(7)                # SlideTo, SlideUnpitchTo, LeftHand, Tap,
-                                   # PickDirection, Slap, Pluck
+            slide_to   = r_i8()    # SlideTo: target fret, -1 = no slide
+            skip(2)                # SlideUnpitchTo, LeftHand
+            skip(1)                # Tap (already captured via NOTE_MASK_TAP)
+            pick_dir   = r_u8()    # PickDirection: 0=down, 1=up
+            skip(2)                # Slap, Pluck
             vibrato    = r_i16()   # Vibrato (non-zero = has vibrato)
             sustain    = r_f32()   # Sustain
             skip(4)                # MaxBend
@@ -265,6 +272,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             if note_mask & (NOTE_MASK_HAMMER | NOTE_MASK_PULLOFF): effects.add('hammer')
             if note_mask & NOTE_MASK_TAP:       effects.add('tap')
             if note_mask & NOTE_MASK_SLIDE:     effects.add('slide')
+            effects.add('stroke_up' if pick_dir == 1 else 'stroke_down')
 
             if note_mask & NOTE_MASK_CHORD:
                 if 0 <= chord_id < len(chord_templates):
@@ -275,12 +283,16 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
                                               'string': s, 'fret': f,
                                               'finger': tmpl['fingers'][s],
                                               'effects': effects,
-                                              'vibrato': vibrato})
+                                              'vibrato': vibrato,
+                                              'slide_semitones': 0})
             elif fret_id != 255:
+                # slide_semitones: signed semitone offset at end of sustain
+                slide_st = (slide_to - fret_id) if 0 <= slide_to <= 127 else 0
                 arr_notes.append({'time': t, 'sustain': sustain,
                                   'string': string_idx, 'fret': fret_id,
                                   'finger': 0, 'effects': effects,
-                                  'vibrato': vibrato})
+                                  'vibrato': vibrato,
+                                  'slide_semitones': slide_st})
 
         skip(r_i32() * 4)   # AverageNotesPerIteration float[]
         skip(r_i32() * 4)   # NotesInIteration1 long[]
@@ -568,19 +580,36 @@ def parse_arrangement(xml_path: str) -> dict:
             sections.append({'name': name, 'number': number, 'time': start})
 
     # ── Notes ────────────────────────────────────────────────
+    def _xml_effects(el):
+        efx = set()
+        if int_attr(el, 'palmMute',    0): efx.add('palm_mute')
+        if int_attr(el, 'fretHandMute',0): efx.add('dead')
+        if int_attr(el, 'harmonic',    0): efx.add('harmonic')
+        if int_attr(el, 'hammerOn',    0) or int_attr(el, 'pullOff', 0):
+            efx.add('hammer')
+        if int_attr(el, 'tap',         0): efx.add('tap')
+        if int_attr(el, 'slideTo', -1) >= 0: efx.add('slide')
+        efx.add('stroke_up' if int_attr(el, 'pickDirection', 0) == 1
+                else 'stroke_down')
+        return efx
+
     notes = []
     notes_el = root.find('Notes')
     if notes_el is not None:
         for n in notes_el.findall('Note'):
-            t       = float_attr(n, 'time')
-            sustain = float_attr(n, 'sustain', 0.0)
-            string  = int_attr(n,  'string')    # RS2: 0=high e, 5=low E
-            fret    = int_attr(n,  'fret')
-            ignore  = int_attr(n,  'ignore', 0)
+            t        = float_attr(n, 'time')
+            sustain  = float_attr(n, 'sustain', 0.0)
+            string   = int_attr(n,  'string')    # RS2: 0=high e, 5=low E
+            fret     = int_attr(n,  'fret')
+            ignore   = int_attr(n,  'ignore', 0)
             if ignore:
                 continue
+            slide_to = int_attr(n, 'slideTo', -1)
+            slide_st = (slide_to - fret) if slide_to >= 0 else 0
             notes.append({'time': t, 'sustain': sustain,
-                          'string': string, 'fret': fret})
+                          'string': string, 'fret': fret,
+                          'effects': _xml_effects(n), 'vibrato': 0,
+                          'slide_semitones': slide_st, 'finger': 0})
 
     # ── Chords ───────────────────────────────────────────────
     chord_templates = []
@@ -602,6 +631,7 @@ def parse_arrangement(xml_path: str) -> dict:
             ignore   = int_attr(ch,   'ignore', 0)
             if ignore:
                 continue
+            chord_efx = _xml_effects(ch)
             # Prefer <ChordNotes> child elements — they carry per-string sustain
             chord_notes_el = ch.find('ChordNotes')
             if chord_notes_el is not None and len(chord_notes_el) > 0:
@@ -609,16 +639,23 @@ def parse_arrangement(xml_path: str) -> dict:
                     s    = int_attr(cn, 'string')
                     f    = int_attr(cn, 'fret')
                     sust = float_attr(cn, 'sustain', sustain)
+                    fng  = int_attr(cn, 'leftHand', 0)
                     if f >= 0:
-                        notes.append({'time': t, 'sustain': sust, 'string': s, 'fret': f})
+                        notes.append({'time': t, 'sustain': sust,
+                                      'string': s, 'fret': f,
+                                      'effects': chord_efx, 'vibrato': 0,
+                                      'slide_semitones': 0, 'finger': fng})
             elif 0 <= chord_id < len(chord_templates):
                 # Fallback: expand from ChordTemplate (no per-string sustain)
                 tmpl = chord_templates[chord_id]
                 for s in range(6):
-                    f = tmpl['frets'][s]
+                    f   = tmpl['frets'][s]
+                    fng = tmpl['fingers'][s]
                     if f >= 0:
                         notes.append({'time': t, 'sustain': sustain,
-                                      'string': s, 'fret': f})
+                                      'string': s, 'fret': f,
+                                      'effects': chord_efx, 'vibrato': 0,
+                                      'slide_semitones': 0, 'finger': fng})
 
     # ── Vocals (for Lyrics.txt) ───────────────────────────────
     vocals = []
@@ -774,29 +811,32 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     inst_track.name = track_name
     inst_track.append(mido.MetaMessage('track_name', name=track_name, time=0))
 
-    # Vibrato pitch-bend constants.
-    # Immerrock/EoF uses standard MIDI pitch bend (±2 semitone default range).
-    # Rate and depth are approximate — adjust if the developer publishes exact values.
-    VIBRATO_RATE_HZ    = 5.0    # oscillations per second
-    VIBRATO_SEMITONES  = 1.0    # peak deviation in semitones
-    PB_RANGE_SEMITONES = 2.0    # standard MIDI pitch-bend range (±2 st)
-    VIBRATO_AMPLITUDE  = int(VIBRATO_SEMITONES / PB_RANGE_SEMITONES * 8191)
-    VIBRATO_STEP_SEC   = 1.0 / (VIBRATO_RATE_HZ * 8)  # 8 steps per cycle
+    # Pitch-bend scale confirmed by Immerrock dev (Motanum):
+    # +1280 raw MIDI units per semitone; neutral = 8192 (mido: 0).
+    PB_SEMITONE_UNITS  = 1280
+
+    # Vibrato constants — sinusoidal sweep centred on neutral pitch.
+    VIBRATO_RATE_HZ   = 5.0    # oscillations per second
+    VIBRATO_SEMITONES = 1.0    # peak deviation in semitones
+    VIBRATO_AMPLITUDE = int(VIBRATO_SEMITONES * PB_SEMITONE_UNITS)   # 1280
+    VIBRATO_STEP_SEC  = 1.0 / (VIBRATO_RATE_HZ * 8)                 # 8 steps/cycle
 
     # ch15 note-effect map: RS2 effect name → Immerrock MIDI note number
     CH15_EFFECTS = {
-        'palm_mute': 12,
-        'dead':      13,
-        'harmonic':  14,
-        'hammer':    15,
-        'tap':       17,
-        'slide':     20,
+        'palm_mute':   12,
+        'dead':        13,
+        'harmonic':    14,
+        'hammer':      15,
+        'tap':         17,
+        'stroke_down': 18,
+        'stroke_up':   19,
+        'slide':       20,
     }
 
     # Collect notes grouped by (channel, midi_note) to detect overlaps.
     # Also keep per-note metadata for ch15 signals and pitch bend.
     note_groups: dict[tuple, list] = {}
-    per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end)
+    per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end, slide_semitones)
     for note in notes:
         rs2_str = note['string']
         fret    = note['fret']
@@ -828,6 +868,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             note.get('vibrato', 0),
             note['time'],
             note_end,
+            note.get('slide_semitones', 0),
         ))
 
     # Cap off_tick to prevent same-pitch overlap.
@@ -853,7 +894,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
 
     # ch15 finger placement (notes 31–35) and note effects (notes 12–20).
     # Velocity encodes which string: (channel + 1) * 5 + 1
-    for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end in per_note_meta:
+    for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end, slide_semitones in per_note_meta:
         str_vel = (channel + 1) * 5 + 1
 
         if 1 <= finger <= 5:
@@ -866,9 +907,24 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
                 events.append((on_tick, 'on',  15, eff_note, str_vel))
                 events.append((on_tick, 'off', 15, eff_note, 0))
 
-        # Pitch bend vibrato — sinusoidal sweep for the duration of the note.
-        if vibrato and note_end > note_time:
-            import math
+        # Pitch bend: slides take priority over vibrato (they'd conflict).
+        duration = note_end - note_time
+        if slide_semitones and duration > 0:
+            # Linear sweep from neutral (0) to target over the note's sustain.
+            SLIDE_STEPS = 16
+            pb_target = max(-8192, min(8191,
+                            slide_semitones * PB_SEMITONE_UNITS))
+            for i in range(SLIDE_STEPS + 1):
+                frac     = i / SLIDE_STEPS
+                pb_value = int(pb_target * frac)
+                t        = note_time + frac * duration
+                tick     = _time_to_ticks(t, beats)
+                events.append((tick, 'pb', channel, pb_value, 0))
+            # Reset to neutral after the note ends
+            reset_tick = _time_to_ticks(note_end, beats)
+            events.append((reset_tick, 'pb', channel, 0, 0))
+        elif vibrato and duration > 0:
+            # Sinusoidal vibrato sweep.
             t = note_time
             while t <= note_end:
                 phase    = (t - note_time) * VIBRATO_RATE_HZ * 2 * math.pi
@@ -876,7 +932,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
                 tick     = _time_to_ticks(t, beats)
                 events.append((tick, 'pb', channel, pb_value, 0))
                 t += VIBRATO_STEP_SEC
-            # Reset pitch bend after note
+            # Reset to neutral after the note ends
             reset_tick = _time_to_ticks(note_end, beats)
             events.append((reset_tick, 'pb', channel, 0, 0))
 
@@ -940,6 +996,8 @@ def build_info_txt(arrangements: list[dict], song_ogg_path: str = None) -> str:
     has_bass   = False
 
     for a in arrangements:
+        if not a.get('notes'):
+            continue  # don't claim an arrangement exists if it has no notes
         t = a.get('arr_type', '').lower()
         if 'lead' in t or t == 'combo':
             lead_tuning = a.get('tuning', [0]*6)
@@ -1316,6 +1374,9 @@ def convert_psarc(psarc_path: str, output_dir: str, vgmstream: str | None) -> bo
         atype = a['arr_type']
         if atype == 'vocals':
             continue  # handled via Lyrics.txt
+        if not a.get('notes'):
+            print(f"    ⚠ {atype}: 0 notes — skipped")
+            continue
         key = next((k for k in track_map if k in atype), None)
         if not key:
             continue
