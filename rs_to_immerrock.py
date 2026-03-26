@@ -1612,6 +1612,8 @@ def run_gui():
                 log_print(f'  Complete: {ok} converted, {err} failed')
                 log_print(f'  Output: {output_dir[0]}')
                 convert_btn.configure(state='normal')
+                if os.path.isdir(output_dir[0]):
+                    os.startfile(output_dir[0])
             root.after(0, finish)
 
         threading.Thread(target=worker, daemon=True).start()
