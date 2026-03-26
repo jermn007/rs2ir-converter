@@ -1103,65 +1103,84 @@ def _format_lyric_timestamp(seconds: float) -> str:
 def build_lyrics_txt(vocals: list[dict], song_length: float = 0) -> str:
     """Generate Lyrics.txt from vocal data.
 
-    Consecutive vocal events are grouped into caption lines of at most
-    MAX_CHARS characters without breaking words. A new line is started
-    when either the character limit would be exceeded or there is a
-    silence gap of TIME_GAP seconds or more between events.
+    Each charter phrase becomes its own display line. Two signals end a phrase:
+      1. Capitalised word gated by inter-onset interval (IOI) — fires when the
+         gap between the *start* of the previous event and the start of this one
+         exceeds CAP_IOI_MIN. Using IOI guards against splitting quickly-
+         delivered proper nouns: "Dancing Queen" (IOI ≈ 0.89 s) stays together
+         while a real phrase break like "Diver → You" (IOI ≈ 1.2 s) splits.
+      2. Silence gap ≥ TIME_GAP seconds (event end → next start) — catches
+         section breaks and CDLCs with no natural capitalisation boundaries.
 
-    RS suffix conventions:
-      '-' — syllable hyphen: join the NEXT fragment without a space.
-             e.g. "Ho-" + "ly" → "Holy", "Div-" + "er" → "Diver".
-             The last syllable of a word has no '-', so the following
-             word gets a normal space.
-      '+' — phrase continuation marker; treated as a normal word boundary
-             (space before next word). Stripped from display text.
+    The no-suffix phrase-end marker was removed: many CDLCs mix marked and
+    bare words inconsistently, causing Signal 1 to fire on almost every word
+    and produce one-word-per-line output regardless of threshold tuning.
+
+    Within a phrase '-' joins the next syllable without a space
+    ("Ho-" + "ly" → "Holy"); '+' and bare words keep a normal space.
+    MAX_CHARS is a generous safety wrap for truly runaway phrases.
     """
-    MAX_CHARS = 40
-    TIME_GAP  = 1.5   # seconds — start a new line after this much silence
+    MAX_CHARS   = 50    # wrap long runs at word boundaries; natural phrases
+                        # are typically ≤41 chars so this won't affect them
+    TIME_GAP    = 1.5   # seconds — silence-gap signal
+    CAP_IOI_MIN = 1.0   # seconds — min inter-onset interval for cap signal
 
-    lines      = ['00:00.00 ""']
-    group_text = ''
-    group_time = None
-    last_end   = None   # end time (time + length) of the most recent event
-    join_next  = False  # True when previous event ended with '-'
+    lines = ['00:00.00 ""']
 
-    def flush():
-        nonlocal group_text, group_time, last_end, join_next
-        if group_text and group_time is not None:
-            ts = _format_lyric_timestamp(group_time)
-            lines.append(f'{ts} "{group_text}"')
-        group_text = ''
-        group_time = None
-        last_end   = None
-        join_next  = False
+    phrase_text = ''
+    phrase_time = None
+    join_next   = False  # True when last event ended with '-'
+    last_end    = None   # time + length of last event (silence gap)
+    prev_time   = None   # onset time of last event (IOI for cap signal)
+
+    def emit():
+        nonlocal phrase_text, phrase_time, join_next
+        if phrase_text and phrase_time is not None:
+            ts = _format_lyric_timestamp(phrase_time)
+            lines.append(f'{ts} "{phrase_text}"')
+        phrase_text = ''
+        phrase_time = None
+        join_next   = False
 
     for v in vocals:
-        raw    = v['text'].strip()
-        hyphen = raw.endswith('-')          # '-' → join NEXT without space
-        text   = raw.rstrip('+-').strip()
+        raw        = v['text'].strip()
+        has_hyphen = raw.endswith('-')
+        text       = raw.rstrip('+-').strip()
         if not text:
             continue
 
         v_end = v['time'] + v.get('length', 0)
 
-        if group_time is None:
-            group_time = v['time']
-            group_text = text
+        # Signal 2 — silence gap
+        if last_end is not None and (v['time'] - last_end) > TIME_GAP:
+            emit()
+
+        # Signal 1 — capitalised word, gated by inter-onset interval
+        if phrase_text and not join_next and text and text[0].isupper():
+            ioi = v['time'] - prev_time if prev_time is not None else 0
+            if ioi > CAP_IOI_MIN:
+                emit()
+
+        # Accumulate syllable into current phrase
+        if phrase_time is None:
+            phrase_time = v['time']
+            phrase_text = text
         else:
-            gap       = v['time'] - last_end if last_end is not None else 0
             sep       = '' if join_next else ' '
-            candidate = group_text + sep + text
-            if gap > TIME_GAP or len(candidate) > MAX_CHARS:
-                flush()
-                group_time = v['time']
-                group_text = text
+            candidate = phrase_text + sep + text
+            # Safety wrap: only at a word boundary, never mid-hyphen-join
+            if not join_next and len(candidate) > MAX_CHARS:
+                emit()
+                phrase_time = v['time']
+                phrase_text = text
             else:
-                group_text = candidate
+                phrase_text = candidate
 
-        join_next = hyphen
+        join_next = has_hyphen
         last_end  = v_end
+        prev_time = v['time']
 
-    flush()  # emit any remaining words
+    emit()  # flush any remaining
 
     if song_length > 0:
         ts = _format_lyric_timestamp(song_length)
