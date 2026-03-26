@@ -89,7 +89,7 @@ Artist - Song Title/
     Lyrics.txt        ← lyrics (empty placeholder if none)
 ```
 
-Only tracks present in the PSARC are generated.
+Only tracks that exist in the PSARC **and contain at least one note** are generated. Arrangements present in the PSARC with zero notes (e.g. a charter who only mapped bass) are silently skipped and will not appear in Immerrock.
 
 ---
 
@@ -168,9 +168,13 @@ Finger signals (31–35) are emitted for chord notes, which carry finger data fr
 
 **Pitch bend**
 
-- **Slides** — a 16-step linear pitch-bend sweep is emitted on the note's channel over the full sustain duration, from neutral (0) to the target semitone offset. Scale: +1280 MIDI units per semitone, matching the Immerrock reference value.
-- **Vibrato** — a sinusoidal pitch-bend sweep at 5 Hz / ±1 semitone is emitted for the duration of notes flagged with vibrato in the RS data. Slides take priority if both flags are present.
-- Pitch bend resets to neutral at the end of each affected note.
+Slides, bends, and vibrato are handled as distinct effect types. Priority order: slide > bend > vibrato.
+
+- **Slides** — a 16-step linear pitch-bend sweep from neutral (0) to the target fret offset over the full sustain. The final event stays at the target pitch (no reset) so Immerrock can draw the slide trail to its endpoint.
+- **Bends** — the SNG `BEND_DATA_SECTION` is parsed directly; each timed step emits a pitch bend event at the corresponding semitone value. Pitch bend resets to neutral at note end.
+- **Vibrato** — a sinusoidal pitch-bend sweep at 5 Hz / ±384 units (~0.3 semitone peak) for the duration of the note. Pitch bend resets to neutral at note end.
+
+All pitch bend uses a scale of +1280 MIDI units per semitone, matching the Immerrock reference value.
 
 **Timing correction** — RS beat timestamps are absolute seconds from the start of the audio. `_time_to_ticks` interpolates linearly between beat boundaries to place each note at the correct fractional-beat tick position.
 
@@ -196,6 +200,7 @@ The DDS texture from the PSARC is converted to JPEG at up to 512 × 512 using Pi
 
 - **Finger placement on single notes** — RS CDLC charters rarely assign explicit finger data to individual (non-chord) notes, so finger signals are only emitted for chord notes where the data is present
 - **Thumb visualization** — note 35 (Thumb) is not yet visualized in Immerrock (per the developer); the signal is emitted but has no in-game effect currently
+- **Chord slide pitch bend** — slide pitch bend is only generated for single notes. RS stores per-string slide targets for chords in a separate ChordNotes section; that data is not yet parsed, so chord slides emit the ch15 Slide marker (note 20) only
 - **Vocals** in RS CDLCs rarely include beat timing; `Lyrics.txt` is generated but may be empty
 - **Drop / open tunings** that go below MIDI note 0 or above 127 are clamped
 
