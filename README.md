@@ -1,6 +1,6 @@
 # RS2IR Converter
 
-Convert **Rocksmith 2014 CDLC** (`.psarc`) files into **Immerrock** custom song packages for Meta Quest.
+Convert **Rocksmith 2014 CDLC** (`.psarc`) files into **IMMERROCK** custom song packages for Meta Quest.
 
 Supports Lead, Rhythm, and Bass guitar tracks with full tuning, tempo-map, and section data. Lyrics are exported when present. Album art is converted automatically.
 
