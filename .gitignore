@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Input files — PSARCs can be large; don't commit them
+*.psarc
+
+# Output song folders — generated content, not source
+# (add exceptions below if you want to commit specific test outputs)
+*/GGLead.mid
+*/GGRhythm.mid
+*/GGBass.mid
+*/Song.ogg
+*/Cover.jpg
+*/Info.txt
+*/Sections.txt
+*/Lyrics.txt
+
+# vgmstream binaries — download separately per README
+vgmstream-cli.exe
+*.dll
+avcodec-*
+avformat-*
+avutil-*
+libatrac9*
+libcelt*
+libg719*
+libmpg123*
+libspeex*
+libvorbis*
+swresample-*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Misc
+*.log
+*.tmp
+HANDOFF.md
+USAGE.md
+COPYING
