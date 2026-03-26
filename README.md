@@ -190,7 +190,7 @@ The largest WEM file in the PSARC (main audio, not preview) is extracted and pip
 |---|---|
 | `Info.txt` | Artist, Title, Album, Year, Genre, BPM, per-track tuning, chart delay |
 | `Sections.txt` | Timestamped section names from the SNG, used by Immerrock's Phrase Refiner |
-| `Lyrics.txt` | One line per vocal event in `M:SS.mmm "text"` format; placeholder if none |
+| `Lyrics.txt` | Vocal events grouped into caption phrases in `M:SS.mmm "text"` format; placeholder if none |
 
 ### 6. Album Art
 
