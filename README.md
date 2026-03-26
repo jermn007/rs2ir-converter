@@ -107,18 +107,18 @@ Once conversion is complete, copy each `Artist - Song Title/` folder into the `I
 2. Connect via USB cable and confirm the prompt in-headset
 3. Copy a single song:
    ```bash
-   adb push "Artist - Song Title" "/sdcard/ImmerrockCustomSongs/"
+   adb push "Artist - Song Title" "/sdcard/Download/ImmerrockCustomSongs/"
    ```
 4. Or push your entire output folder at once:
    ```bash
-   adb push ImmerrockCustomSongs/. "/sdcard/ImmerrockCustomSongs/"
+   adb push ImmerrockCustomSongs/. "/sdcard/Download/ImmerrockCustomSongs/"
    ```
 
 ### Method 2: SideQuest
 
 1. Install [SideQuest](https://sidequestvr.com/setup-howto) and connect your Quest via USB
 2. Click the **Files** icon in the toolbar
-3. Navigate to `sdcard/ImmerrockCustomSongs/`
+3. Navigate to `sdcard/Download/ImmerrockCustomSongs/`
 4. Drag and drop song folders from Windows Explorer into the SideQuest file pane
 
 ---
