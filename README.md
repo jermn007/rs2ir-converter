@@ -47,6 +47,8 @@ Place `vgmstream-cli.exe` and its DLLs in the same folder.
 
 ### GUI (recommended)
 
+![RS2IR Converter GUI](RS2IRGUI.png)
+
 Double-click `rs_to_immerrock.py`, or run:
 
 ```bash
