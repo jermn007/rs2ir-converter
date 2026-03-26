@@ -1104,50 +1104,62 @@ def build_lyrics_txt(vocals: list[dict], song_length: float = 0) -> str:
     """Generate Lyrics.txt from vocal data.
 
     Consecutive vocal events are grouped into caption lines of at most
-    MAX_CHARS characters without breaking words. The timestamp of each
-    line is the onset of its first word.
+    MAX_CHARS characters without breaking words. A new line is started
+    when either the character limit would be exceeded or there is a
+    silence gap of TIME_GAP seconds or more between events.
 
-    RS2 suffix conventions:
-      '+' — phrase continuation marker; words still get a normal space.
-             Charters put '+' on every non-final word in a phrase — it
-             does NOT mean "join without space".
-      '-' — phrase end; flush the current line.
+    RS suffix conventions:
+      '-' — syllable hyphen: join the NEXT fragment without a space.
+             e.g. "Ho-" + "ly" → "Holy", "Div-" + "er" → "Diver".
+             The last syllable of a word has no '-', so the following
+             word gets a normal space.
+      '+' — phrase continuation marker; treated as a normal word boundary
+             (space before next word). Stripped from display text.
     """
     MAX_CHARS = 40
+    TIME_GAP  = 1.5   # seconds — start a new line after this much silence
 
     lines      = ['00:00.00 ""']
     group_text = ''
     group_time = None
+    last_end   = None   # end time (time + length) of the most recent event
+    join_next  = False  # True when previous event ended with '-'
 
     def flush():
-        nonlocal group_text, group_time
+        nonlocal group_text, group_time, last_end, join_next
         if group_text and group_time is not None:
             ts = _format_lyric_timestamp(group_time)
             lines.append(f'{ts} "{group_text}"')
         group_text = ''
         group_time = None
+        last_end   = None
+        join_next  = False
 
     for v in vocals:
-        raw        = v['text'].strip()
-        phrase_end = raw.endswith('-')
-        text       = raw.rstrip('+-').strip()
+        raw    = v['text'].strip()
+        hyphen = raw.endswith('-')          # '-' → join NEXT without space
+        text   = raw.rstrip('+-').strip()
         if not text:
             continue
+
+        v_end = v['time'] + v.get('length', 0)
 
         if group_time is None:
             group_time = v['time']
             group_text = text
         else:
-            candidate = group_text + ' ' + text
-            if len(candidate) > MAX_CHARS:
+            gap       = v['time'] - last_end if last_end is not None else 0
+            sep       = '' if join_next else ' '
+            candidate = group_text + sep + text
+            if gap > TIME_GAP or len(candidate) > MAX_CHARS:
                 flush()
                 group_time = v['time']
                 group_text = text
             else:
                 group_text = candidate
 
-        if phrase_end:
-            flush()
+        join_next = hyphen
+        last_end  = v_end
 
     flush()  # emit any remaining words
 
