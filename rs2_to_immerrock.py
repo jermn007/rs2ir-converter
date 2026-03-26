@@ -168,10 +168,11 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
     # ── CHORD_SECTION  (CHORD<size=72>: ulong+byte[6]+byte[6]+long[6]+char[32]) ─
     chord_templates = []
     for _ in range(r_i32()):
-        skip(4)                              # ulong Mask
-        frets = [r_u8() for _ in range(6)]  # byte[6] Frets (255 = not played)
-        skip(6 + 24 + 32)                   # Fingers + Notes + Name
-        chord_templates.append(frets)
+        skip(4)                                  # ulong Mask
+        frets   = [r_u8() for _ in range(6)]    # byte[6] Frets (255 = not played)
+        fingers = [r_u8() for _ in range(6)]    # byte[6] Fingers (0=none,1=index..5=thumb)
+        skip(24 + 32)                            # Notes (6×float) + Name (char[32])
+        chord_templates.append({'frets': frets, 'fingers': fingers})
 
     # ── CHORD_NOTES_SECTION  (CHORD_NOTES<size=2376>) ────────────
     skip(r_i32() * 2376)
@@ -224,7 +225,14 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
         sections.append({'name': name, 'time': t})
 
     # ── ARRANGEMENT_SECTION  (variable) ──────────────────────────
-    NOTE_MASK_CHORD = 0x2
+    NOTE_MASK_CHORD      = 0x0002
+    NOTE_MASK_MUTE       = 0x0008   # FretHandMute → dead note
+    NOTE_MASK_HARMONIC   = 0x0020
+    NOTE_MASK_PALM_MUTE  = 0x0040
+    NOTE_MASK_HAMMER     = 0x0200   # HammerOn
+    NOTE_MASK_PULLOFF    = 0x0400
+    NOTE_MASK_SLIDE      = 0x0800
+    NOTE_MASK_TAP        = 0x4000
     all_arrs = []   # list of (difficulty, notes)
     for _ in range(r_i32()):
         difficulty = r_i32()            # Difficulty (long)
@@ -242,21 +250,37 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             fret_id    = r_u8()    # FretId (255 = not played)
             skip(2)                # AnchorFretId + AnchorWidth
             chord_id   = r_i32()   # ChordId
-            skip(4 + 8 + 4 + 6 + 7 + 2)  # ChordNotesId, PhraseIds, FingerPrints,
-                                          # IterNotes, SlideTo..Pluck, Vibrato
+            skip(4 + 8 + 4 + 6)   # ChordNotesId, PhraseIds, FingerPrints, IterNotes
+            skip(7)                # SlideTo, SlideUnpitchTo, LeftHand, Tap,
+                                   # PickDirection, Slap, Pluck
+            vibrato    = r_i16()   # Vibrato (non-zero = has vibrato)
             sustain    = r_f32()   # Sustain
             skip(4)                # MaxBend
             skip(r_i32() * 12)     # BEND_DATA_SECTION
 
+            effects = set()
+            if note_mask & NOTE_MASK_PALM_MUTE: effects.add('palm_mute')
+            if note_mask & NOTE_MASK_MUTE:      effects.add('dead')
+            if note_mask & NOTE_MASK_HARMONIC:  effects.add('harmonic')
+            if note_mask & (NOTE_MASK_HAMMER | NOTE_MASK_PULLOFF): effects.add('hammer')
+            if note_mask & NOTE_MASK_TAP:       effects.add('tap')
+            if note_mask & NOTE_MASK_SLIDE:     effects.add('slide')
+
             if note_mask & NOTE_MASK_CHORD:
                 if 0 <= chord_id < len(chord_templates):
-                    for s, f in enumerate(chord_templates[chord_id]):
+                    tmpl = chord_templates[chord_id]
+                    for s, f in enumerate(tmpl['frets']):
                         if f != 255:
                             arr_notes.append({'time': t, 'sustain': sustain,
-                                              'string': s, 'fret': f})
+                                              'string': s, 'fret': f,
+                                              'finger': tmpl['fingers'][s],
+                                              'effects': effects,
+                                              'vibrato': vibrato})
             elif fret_id != 255:
                 arr_notes.append({'time': t, 'sustain': sustain,
-                                  'string': string_idx, 'fret': fret_id})
+                                  'string': string_idx, 'fret': fret_id,
+                                  'finger': 0, 'effects': effects,
+                                  'vibrato': vibrato})
 
         skip(r_i32() * 4)   # AverageNotesPerIteration float[]
         skip(r_i32() * 4)   # NotesInIteration1 long[]
@@ -750,8 +774,29 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     inst_track.name = track_name
     inst_track.append(mido.MetaMessage('track_name', name=track_name, time=0))
 
-    # Collect notes grouped by (channel, midi_note) to detect overlaps
+    # Vibrato pitch-bend constants.
+    # Immerrock/EoF uses standard MIDI pitch bend (±2 semitone default range).
+    # Rate and depth are approximate — adjust if the developer publishes exact values.
+    VIBRATO_RATE_HZ    = 5.0    # oscillations per second
+    VIBRATO_SEMITONES  = 1.0    # peak deviation in semitones
+    PB_RANGE_SEMITONES = 2.0    # standard MIDI pitch-bend range (±2 st)
+    VIBRATO_AMPLITUDE  = int(VIBRATO_SEMITONES / PB_RANGE_SEMITONES * 8191)
+    VIBRATO_STEP_SEC   = 1.0 / (VIBRATO_RATE_HZ * 8)  # 8 steps per cycle
+
+    # ch15 note-effect map: RS2 effect name → Immerrock MIDI note number
+    CH15_EFFECTS = {
+        'palm_mute': 12,
+        'dead':      13,
+        'harmonic':  14,
+        'hammer':    15,
+        'tap':       17,
+        'slide':     20,
+    }
+
+    # Collect notes grouped by (channel, midi_note) to detect overlaps.
+    # Also keep per-note metadata for ch15 signals and pitch bend.
     note_groups: dict[tuple, list] = {}
+    per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end)
     for note in notes:
         rs2_str = note['string']
         fret    = note['fret']
@@ -766,18 +811,30 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
         sustain  = note['sustain']
         if sustain > 0:
             off_tick = _time_to_ticks(note['time'] + sustain, beats)
+            note_end = note['time'] + sustain
         else:
             off_tick = on_tick + max(1, TICKS_PER_BEAT // 8)
+            note_end = note['time']
 
         key = (channel, midi_note)
         if key not in note_groups:
             note_groups[key] = []
         note_groups[key].append([on_tick, off_tick])
 
-    # Cap off_tick to prevent same-pitch overlap and ensure each strum
-    # shows its fret diagram (not a continuation bar).
+        per_note_meta.append((
+            channel, on_tick, off_tick,
+            note.get('finger', 0),
+            note.get('effects', set()),
+            note.get('vibrato', 0),
+            note['time'],
+            note_end,
+        ))
+
+    # Cap off_tick to prevent same-pitch overlap.
     # Leave at least a 32nd-note gap so Immerrock treats them as separate events.
     NOTE_GAP = TICKS_PER_BEAT // 8  # 32nd note at 480 TPB = 60 ticks
+    # events tuple: (tick, etype, channel, value, velocity)
+    # etype: 'on'/'off' = note_on message; 'pb' = pitchwheel (value=pitch, velocity unused)
     events = []
     for (channel, midi_note), grp in note_groups.items():
         grp.sort(key=lambda x: x[0])
@@ -785,35 +842,65 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             if grp[i][1] >= grp[i + 1][0]:
                 grp[i][1] = max(grp[i][0] + 1, grp[i + 1][0] - NOTE_GAP)
         for on_tick, off_tick in grp:
-            events.append((on_tick,  'on',  channel, midi_note))
-            events.append((off_tick, 'off', channel, midi_note))
+            events.append((on_tick,  'on',  channel, midi_note, VELOCITY))
+            events.append((off_tick, 'off', channel, midi_note, 0))
 
-    # Add a chord-mode trigger (ch15, note 30) at every note-on tick so
-    # Immerrock re-draws the fret diagram on every strum, not just the first
-    # occurrence of each unique chord shape.
+    # ch15 chord-mode trigger (note 30) at every note-on tick.
     on_ticks = {e[0] for e in events if e[1] == 'on' and e[2] < 15}
     for tick in on_ticks:
-        events.append((tick, 'on',  15, 30))
-        events.append((tick, 'off', 15, 30))
+        events.append((tick, 'on',  15, 30, 100))
+        events.append((tick, 'off', 15, 30, 0))
 
-    # Sort: by tick, then ch15 triggers before regular notes at same tick,
-    # then off before on.
+    # ch15 finger placement (notes 31–35) and note effects (notes 12–20).
+    # Velocity encodes which string: (channel + 1) * 5 + 1
+    for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end in per_note_meta:
+        str_vel = (channel + 1) * 5 + 1
+
+        if 1 <= finger <= 5:
+            fn = 30 + finger  # 31=Index, 32=Middle, 33=Ring, 34=Little, 35=Thumb
+            events.append((on_tick, 'on',  15, fn, str_vel))
+            events.append((on_tick, 'off', 15, fn, 0))
+
+        for eff, eff_note in CH15_EFFECTS.items():
+            if eff in effects:
+                events.append((on_tick, 'on',  15, eff_note, str_vel))
+                events.append((on_tick, 'off', 15, eff_note, 0))
+
+        # Pitch bend vibrato — sinusoidal sweep for the duration of the note.
+        if vibrato and note_end > note_time:
+            import math
+            t = note_time
+            while t <= note_end:
+                phase    = (t - note_time) * VIBRATO_RATE_HZ * 2 * math.pi
+                pb_value = int(VIBRATO_AMPLITUDE * math.sin(phase))
+                tick     = _time_to_ticks(t, beats)
+                events.append((tick, 'pb', channel, pb_value, 0))
+                t += VIBRATO_STEP_SEC
+            # Reset pitch bend after note
+            reset_tick = _time_to_ticks(note_end, beats)
+            events.append((reset_tick, 'pb', channel, 0, 0))
+
+    # Sort: by tick; ch15 and pb events before regular note-ons at same tick;
+    # note-offs before note-ons at same tick.
     def _sort_key(e):
-        tick, etype, ch, note = e
-        type_order = 0 if etype == 'off' else 1
-        ch_order   = 0 if ch == 15 else 1   # ch15 triggers first
+        tick, etype, ch, val, vel = e
+        type_order = 0 if etype in ('off', 'pb') else 1
+        ch_order   = 0 if ch == 15 or etype == 'pb' else 1
         return (tick, ch_order, type_order)
     events.sort(key=_sort_key)
 
     # Convert to delta-time messages
     prev_tick = 0
-    for abs_tick, etype, channel, midi_note in events:
+    for abs_tick, etype, channel, value, velocity in events:
         delta = max(0, abs_tick - prev_tick)
         prev_tick = abs_tick
-        velocity = ((100 if channel == 15 else VELOCITY) if etype == 'on' else 0)
-        inst_track.append(mido.Message('note_on',
-            channel=channel, note=midi_note,
-            velocity=velocity, time=delta))
+        if etype == 'pb':
+            inst_track.append(mido.Message('pitchwheel',
+                channel=channel, pitch=value, time=delta))
+        else:
+            inst_track.append(mido.Message('note_on',
+                channel=channel, note=value,
+                velocity=velocity, time=delta))
 
     inst_track.append(mido.MetaMessage('end_of_track', time=0))
     return mid
@@ -882,6 +969,9 @@ def build_info_txt(arrangements: list[dict], song_ogg_path: str = None) -> str:
         f"Lead_Fingering={1 if has_lead else 0}",
         f"Rhythm_Fingering={1 if has_rhythm else 0}",
         f"Bass_Fingering={1 if has_bass else 0}",
+        f"Lead_Difficulty={5 if has_lead else 0}",
+        f"Rhythm_Difficulty={5 if has_rhythm else 0}",
+        f"Bass_Difficulty={5 if has_bass else 0}",
         f"Lead_Tuning={lead_tuning_str}",
         f"Rhythm_Tuning={rhythm_tuning_str}",
         f"Bass_Tuning={bass_tuning_str}",
