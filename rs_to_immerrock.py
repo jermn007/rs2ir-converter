@@ -1101,15 +1101,60 @@ def _format_lyric_timestamp(seconds: float) -> str:
 
 
 def build_lyrics_txt(vocals: list[dict], song_length: float = 0) -> str:
-    """Generate Lyrics.txt from vocal data."""
-    lines = ['00:00.00 ""']
+    """Generate Lyrics.txt from vocal data.
+
+    Consecutive vocal events are grouped into caption lines of at most
+    MAX_CHARS characters without breaking words. The timestamp of each
+    line is the onset of its first word.
+
+    RS2 suffix conventions:
+      '+' — this syllable joins the next without a space (split word)
+      '-' — phrase end; flush the current line even if under the limit
+    """
+    MAX_CHARS = 40
+
+    lines      = ['00:00.00 ""']
+    group_text = ''
+    group_time = None
+    prev_join  = False   # previous event ended with '+' → no space before next
+
+    def flush():
+        nonlocal group_text, group_time, prev_join
+        if group_text and group_time is not None:
+            ts = _format_lyric_timestamp(group_time)
+            lines.append(f'{ts} "{group_text}"')
+        group_text = ''
+        group_time = None
+        prev_join  = False
 
     for v in vocals:
-        text = v['text'].rstrip('+').rstrip('-').strip()
+        raw        = v['text'].strip()
+        join_next  = raw.endswith('+')   # connect to next without space
+        phrase_end = raw.endswith('-')   # natural break point
+        text       = raw.rstrip('+-').strip()
         if not text:
             continue
-        ts = _format_lyric_timestamp(v['time'])
-        lines.append(f'{ts} "{text}"')
+
+        sep = '' if prev_join else ' '
+
+        if group_time is None:
+            group_time = v['time']
+            group_text = text
+        else:
+            candidate = group_text + sep + text
+            if len(candidate) > MAX_CHARS:
+                flush()
+                group_time = v['time']
+                group_text = text
+            else:
+                group_text = candidate
+
+        prev_join = join_next
+
+        if phrase_end:
+            flush()
+
+    flush()  # emit any remaining words
 
     if song_length > 0:
         ts = _format_lyric_timestamp(song_length)
