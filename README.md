@@ -55,10 +55,10 @@ Double-click `rs_to_immerrock.py`, or run:
 python rs_to_immerrock.py
 ```
 
-- **Select Files** — pick individual `.psarc` files
-- **Select Folder** — pick a folder; all `.psarc` files inside are queued
-- **Output Folder** — where Immerrock song folders are written (default: `~/ImmerrockCustomSongs`)
-- Click **Convert** — progress bar tracks each song; the log shows per-song detail
+- **Select Files** - pick individual `.psarc` files
+- **Select Folder** - pick a folder; all `.psarc` files inside are queued
+- **Output Folder** - where Immerrock song folders are written (default: `~/ImmerrockCustomSongs`)
+- Click **Convert** - progress bar tracks each song; the log shows per-song detail
 
 ### Command line
 
@@ -126,11 +126,11 @@ All difficulty levels in the Arrangements section are **unioned** together (dedu
 
 One Type-1 MIDI file is produced per arrangement (Lead, Rhythm, Bass).
 
-**Track 0 — Tempo map**
+**Track 0 - Tempo map**
 
 A `set_tempo` event is written at every beat boundary using the actual inter-beat interval from the SNG beat map. A pre-roll tempo event at tick 0 covers any silence before the first beat, so MIDI tick 0 aligns exactly with OGG position 0.
 
-**Track 1 — Notes**
+**Track 1 - Notes**
 
 RS uses one string per channel:
 
@@ -149,7 +149,7 @@ MIDI note number = open-string note + fret + tuning offset. Chords are expanded 
 
 A **chord mode trigger** (Channel 15, note 30, zero-duration) is emitted at every note-on tick, matching the Immerrock/EoF MIDI spec so that chord diagrams render correctly.
 
-**Channel 15 — Note effects and finger placement**
+**Channel 15 - Note effects and finger placement**
 
 Additional zero-duration note-on events on Channel 15 carry per-note metadata. Velocity encodes the string: `channel × 5 + 1`.
 
@@ -172,13 +172,13 @@ Finger signals (31–35) are emitted for chord notes, which carry finger data fr
 
 Slides, bends, and vibrato are handled as distinct effect types. Priority order: slide > bend > vibrato.
 
-- **Slides** — a 16-step linear pitch-bend sweep from neutral (0) to the target fret offset over the full sustain. The final event stays at the target pitch (no reset) so Immerrock can draw the slide trail to its endpoint.
-- **Bends** — the SNG `BEND_DATA_SECTION` is parsed directly; each timed step emits a pitch bend event at the corresponding semitone value. Pitch bend resets to neutral at note end.
-- **Vibrato** — a sinusoidal pitch-bend sweep at 5 Hz / ±384 units (~0.3 semitone peak) for the duration of the note. Pitch bend resets to neutral at note end.
+- **Slides** - a 16-step linear pitch-bend sweep from neutral (0) to the target fret offset over the full sustain. The final event stays at the target pitch (no reset) so Immerrock can draw the slide trail to its endpoint.
+- **Bends** - the SNG `BEND_DATA_SECTION` is parsed directly; each timed step emits a pitch bend event at the corresponding semitone value. Pitch bend resets to neutral at note end.
+- **Vibrato** - a sinusoidal pitch-bend sweep at 5 Hz / ±384 units (~0.3 semitone peak) for the duration of the note. Pitch bend resets to neutral at note end.
 
 All pitch bend uses a scale of +1280 MIDI units per semitone, matching the Immerrock reference value.
 
-**Timing correction** — RS beat timestamps are absolute seconds from the start of the audio. `_time_to_ticks` interpolates linearly between beat boundaries to place each note at the correct fractional-beat tick position.
+**Timing correction** - RS beat timestamps are absolute seconds from the start of the audio. `_time_to_ticks` interpolates linearly between beat boundaries to place each note at the correct fractional-beat tick position.
 
 ### 4. Audio Conversion
 
@@ -200,9 +200,9 @@ The DDS texture from the PSARC is converted to JPEG at up to 512 × 512 using Pi
 
 ## Known Limitations
 
-- **Finger placement on single notes** — RS CDLC charters rarely assign explicit finger data to individual (non-chord) notes, so finger signals are only emitted for chord notes where the data is present
-- **Thumb visualization** — note 35 (Thumb) is not yet visualized in Immerrock (per the developer); the signal is emitted but has no in-game effect currently
-- **Chord slide pitch bend** — slide pitch bend is only generated for single notes. RS stores per-string slide targets for chords in a separate ChordNotes section; that data is not yet parsed, so chord slides emit the ch15 Slide marker (note 20) only
+- **Finger placement on single notes** - RS CDLC charters rarely assign explicit finger data to individual (non-chord) notes, so finger signals are only emitted for chord notes where the data is present
+- **Thumb visualization** - note 35 (Thumb) is not yet visualized in Immerrock (per the developer); the signal is emitted but has no in-game effect currently
+- **Chord slide pitch bend** - slide pitch bend is only generated for single notes. RS stores per-string slide targets for chords in a separate ChordNotes section; that data is not yet parsed, so chord slides emit the ch15 Slide marker (note 20) only
 - **Vocals** in RS CDLCs rarely include beat timing; `Lyrics.txt` is generated but may be empty
 - **Drop / open tunings** that go below MIDI note 0 or above 127 are clamped
 
@@ -212,14 +212,14 @@ The DDS texture from the PSARC is converted to JPEG at up to 512 × 512 using Pi
 
 This tool was built by reverse-engineering publicly documented formats. Key references:
 
-- **[Editor on Fire (EoF)](https://github.com/raynebc/editor-on-fire)** by Raymond Cooke — source of the Immerrock MIDI format specification (`src/ir.c`, `src/ir.h`), including channel assignments, velocity conventions, and Channel 15 hand-mode events
-- **[vgmstream](https://github.com/vgmstream/vgmstream)** — WEM → OGG audio conversion
-- **[RocksmithToolkit](https://github.com/rscustom/rocksmith-custom-song-toolkit)** — reference for SNG binary layout (`Sng2014File.cs`) and SNG/PSARC decryption keys
-- **[Immerrock](https://immerrock.com)** — the VR guitar game this targets; custom song format documented at immerrock.com/custom-song-quick-guide
-- **[pycryptodome](https://pycryptodome.readthedocs.io)**, **[mido](https://mido.readthedocs.io)**, **[Pillow](https://python-pillow.org)** — Python libraries
+- **[Editor on Fire (EoF)](https://github.com/raynebc/editor-on-fire)** by Raymond Cooke - source of the Immerrock MIDI format specification (`src/ir.c`, `src/ir.h`), including channel assignments, velocity conventions, and Channel 15 hand-mode events
+- **[vgmstream](https://github.com/vgmstream/vgmstream)** - WEM → OGG audio conversion
+- **[RocksmithToolkit](https://github.com/rscustom/rocksmith-custom-song-toolkit)** - reference for SNG binary layout (`Sng2014File.cs`) and SNG/PSARC decryption keys
+- **[Immerrock](https://immerrock.com)** - the VR guitar game this targets; custom song format documented at immerrock.com/custom-song-quick-guide
+- **[pycryptodome](https://pycryptodome.readthedocs.io)**, **[mido](https://mido.readthedocs.io)**, **[Pillow](https://python-pillow.org)** - Python libraries
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT - see [LICENSE](LICENSE)
