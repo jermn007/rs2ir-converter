@@ -50,6 +50,9 @@ desktop.ini
 *.sublime-project
 *.sublime-workspace
 
+# PyInstaller intermediate files
+*.spec.bak
+
 # Misc
 *.log
 *.tmp
