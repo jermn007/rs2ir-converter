@@ -6,17 +6,32 @@ Supports Lead, Rhythm, and Bass guitar tracks with full tuning, tempo-map, and s
 
 ---
 
-## Requirements
+## Installation
 
-| Dependency | Install |
-|---|---|
-| Python 3.10+ | [python.org](https://python.org) |
-| mido | `pip install mido` |
-| Pillow | `pip install pillow` |
-| pycryptodome | `pip install pycryptodome` |
-| vgmstream-cli | See below |
+### Option A: Standalone executable (recommended)
 
-### vgmstream-cli setup
+No Python required — download and run.
+
+1. Download the latest release zip from the [Releases page](https://github.com/jermn007/rs2ir-converter/releases)
+2. Extract the zip — you'll get an `RS2IR Converter/` folder
+3. Double-click `RS2IR Converter.exe`
+
+vgmstream (audio conversion) is bundled inside the executable — no separate download needed.
+
+### Option B: Run from source
+
+Requires Python 3.10+.
+
+```bash
+git clone https://github.com/jermn007/rs2ir-converter.git
+cd rs2ir-converter
+pip install -r requirements.txt
+python rs_to_immerrock.py
+```
+
+Place `vgmstream-cli.exe` and its DLLs in the same folder as `rs_to_immerrock.py`.
+
+### vgmstream-cli setup (source install only)
 
 vgmstream converts the WEM audio inside PSARCs to OGG. Without it, audio is skipped but everything else still converts.
 
@@ -31,36 +46,18 @@ Custom songs (CDLCs) can be downloaded from [ignition4.customsforge.com](https:/
 
 ---
 
-## Installation
-
-```bash
-git clone https://github.com/jermn007/rs2ir-converter.git
-cd rs2ir-converter
-pip install -r requirements.txt
-```
-
-Place `vgmstream-cli.exe` and its DLLs in the same folder.
-
----
-
 ## Usage
 
 ### GUI (recommended)
 
 ![RS2IR Converter GUI](RS2IRGUI.png)
 
-Double-click `rs_to_immerrock.py`, or run:
-
-```bash
-python rs_to_immerrock.py
-```
-
 - **Select Files** - pick individual `.psarc` files
 - **Select Folder** - pick a folder; all `.psarc` files inside are queued
 - **Output Folder** - where Immerrock song folders are written (default: `~/ImmerrockCustomSongs`)
 - Click **Convert** - progress bar tracks each song; the log shows per-song detail
 
-### Command line
+### Command line (source install only)
 
 ```bash
 # Single file
@@ -85,7 +82,7 @@ Artist - Song Title/
     GGRhythm.mid      ← rhythm guitar (if present)
     GGBass.mid        ← bass guitar (if present)
     Song.ogg          ← audio (requires vgmstream)
-    Cover.jpg         ← album art (requires Pillow)
+    Cover.jpg         ← album art
     Info.txt          ← metadata
     Sections.txt      ← section markers for Phrase Refiner
     Lyrics.txt        ← lyrics (empty placeholder if none)

@@ -2,8 +2,8 @@
 echo RS2IR Converter - Build Script
 echo ================================
 
-:: Install/upgrade PyInstaller if needed
-pip install --quiet --upgrade pyinstaller
+:: Install/upgrade dependencies if needed
+pip install --quiet --upgrade pyinstaller mido pillow pycryptodome
 
 :: Clean previous build artifacts
 if exist build rmdir /s /q build
@@ -18,6 +18,9 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+:: Copy license file to dist root so it's visible alongside the exe
+copy /y THIRD_PARTY_LICENSES.txt "dist\RS2IR Converter\THIRD_PARTY_LICENSES.txt" >nul
 
 echo.
 echo BUILD COMPLETE

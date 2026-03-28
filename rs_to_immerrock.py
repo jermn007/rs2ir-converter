@@ -1195,19 +1195,18 @@ def build_lyrics_txt(vocals: list[dict], song_length: float = 0) -> str:
 
 def find_vgmstream() -> str | None:
     """Locate vgmstream-cli executable."""
-    # When running as a PyInstaller bundle, __file__ is inside the temp
-    # extraction directory. The exe (and vgmstream) live next to sys.executable.
     import sys
     if getattr(sys, 'frozen', False):
-        base_dir = os.path.dirname(sys.executable)
+        # PyInstaller bundle: bundled binaries live in sys._MEIPASS (_internal/).
+        # Also check next to the exe for a user-supplied vgmstream.
+        search_dirs = [sys._MEIPASS, os.path.dirname(sys.executable)]
     else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        search_dirs = [os.path.dirname(os.path.abspath(__file__))]
     candidates = [
-        os.path.join(base_dir, 'vgmstream-cli.exe'),
-        os.path.join(base_dir, 'vgmstream-cli'),
-        'vgmstream-cli.exe',
-        'vgmstream-cli',
-    ]
+        os.path.join(d, name)
+        for d in search_dirs
+        for name in ('vgmstream-cli.exe', 'vgmstream-cli')
+    ] + ['vgmstream-cli.exe', 'vgmstream-cli']  # PATH fallback
     for c in candidates:
         if shutil.which(c) or os.path.isfile(c):
             return c

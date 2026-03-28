@@ -1,0 +1,188 @@
+RS2IR Converter — Third-Party Licenses
+========================================
+
+This application bundles the following third-party software. Their licenses
+and copyright notices are reproduced below.
+
+------------------------------------------------------------------------
+vgmstream
+------------------------------------------------------------------------
+ISC License
+
+Copyright (c) 2008-2025 Adam Gashlin, Fastelbja, Ronny Elfert, bnnm,
+                        Christopher Snowhill, NicknineTheEagle, bxaimc,
+                        Thealexbarney, CyberBotX, et al
+
+Portions Copyright (c) 2004-2008, Marko Kreen
+Portions Copyright 2001-2007  jagarl / Kazunori Ueno <jagarl@creator.club.ne.jp>
+Portions Copyright (c) 1998, Justin Frankel/Nullsoft Inc.
+Portions Copyright (C) 2006 Nullsoft, Inc.
+Portions Copyright (c) 2005-2007 Paul Hsieh
+Portions Copyright (C) 2000-2004 Leshade Entis, Entis-soft.
+Portions Public Domain originating with Sun Microsystems
+
+Permission to use, copy, modify, and distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+------------------------------------------------------------------------
+FFmpeg (avcodec, avformat, avutil, swresample DLLs — via vgmstream)
+------------------------------------------------------------------------
+The FFmpeg libraries distributed with vgmstream are licensed under the
+GNU Lesser General Public License version 2.1 or later (LGPL v2.1+).
+
+These DLL files are distributed as separate, unmodified shared libraries,
+and can be replaced with a modified version by substituting the DLL files
+in the _internal/ folder.
+
+Full license text: https://www.gnu.org/licenses/lgpl-2.1.html
+FFmpeg project: https://ffmpeg.org
+
+------------------------------------------------------------------------
+mpg123 (libmpg123 DLL — via vgmstream)
+------------------------------------------------------------------------
+mpg123 is licensed under the GNU Lesser General Public License version 2.1
+(LGPL v2.1).
+
+The DLL is distributed as a separate, unmodified shared library and can be
+replaced by substituting the DLL file in the _internal/ folder.
+
+Full license text: https://www.gnu.org/licenses/lgpl-2.1.html
+mpg123 project: https://www.mpg123.de
+
+------------------------------------------------------------------------
+mido
+------------------------------------------------------------------------
+The MIT License
+
+Copyright (c) Ole Martin Bjørndalen
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------
+Pillow
+------------------------------------------------------------------------
+The Python Imaging Library (PIL) is
+
+    Copyright © 1997-2011 by Secret Labs AB
+    Copyright © 1995-2011 by Fredrik Lundh and contributors
+
+Pillow is the friendly PIL fork. It is
+
+    Copyright © 2010 by Jeffrey A. Clark and contributors
+
+Like PIL, Pillow is licensed under the open source MIT-CMU License:
+
+By obtaining, using, and/or copying this software and/or its associated
+documentation, you agree that you have read, understood, and will comply
+with the following terms and conditions:
+
+Permission to use, copy, modify and distribute this software and its
+documentation for any purpose and without fee is hereby granted,
+provided that the above copyright notice appears in all copies, and that
+both that copyright notice and this permission notice appear in supporting
+documentation, and that the name of Secret Labs AB or the author not be
+used in advertising or publicity pertaining to distribution of the software
+without specific, written prior permission.
+
+SECRET LABS AB AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS
+SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.
+IN NO EVENT SHALL SECRET LABS AB OR THE AUTHOR BE LIABLE FOR ANY SPECIAL,
+INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+
+------------------------------------------------------------------------
+pycryptodome
+------------------------------------------------------------------------
+The source code in PyCryptodome is partially in the public domain
+and partially released under the BSD 2-Clause license.
+
+Public domain
+=============
+
+All code originating from  PyCrypto is free and unencumbered software
+released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <http://unlicense.org>
+
+BSD license
+===========
+
+All direct contributions to PyCryptodome are released under the following
+license. The copyright of each piece belongs to the respective author.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+------------------------------------------------------------------------
+Python
+------------------------------------------------------------------------
+Python and the Python logos are trademarks of the Python Software Foundation.
+Python is distributed under the PSF License Agreement.
+Full text: https://docs.python.org/3/license.html
