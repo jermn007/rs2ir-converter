@@ -1216,17 +1216,18 @@ def find_vgmstream() -> str | None:
 def convert_wem_to_ogg(wem_path: str, out_path: str, vgmstream: str) -> bool:
     """Convert a WEM file to OGG using vgmstream-cli."""
     try:
+        no_window = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
         # Try with explicit OGG format flag (required on newer vgmstream builds)
         result = subprocess.run(
             [vgmstream, '-F', 'ogg', '-o', out_path, wem_path],
-            capture_output=True, timeout=60
+            capture_output=True, timeout=60, **no_window
         )
         if result.returncode == 0 and os.path.exists(out_path):
             return True
         # Fallback: no format flag (older builds auto-detect from extension)
         result = subprocess.run(
             [vgmstream, '-o', out_path, wem_path],
-            capture_output=True, timeout=60
+            capture_output=True, timeout=60, **no_window
         )
         return result.returncode == 0 and os.path.exists(out_path)
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
