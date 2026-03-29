@@ -21,6 +21,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 try:
+    import soundfile as _sf
+    _SOUNDFILE_OK = True
+except Exception:
+    _SOUNDFILE_OK = False
+
+try:
     import mido
 except ImportError:
     sys.exit("ERROR: 'mido' not installed. Run: pip install mido")
@@ -1214,25 +1220,71 @@ def find_vgmstream() -> str | None:
 
 
 def convert_wem_to_ogg(wem_path: str, out_path: str, vgmstream: str) -> bool:
-    """Convert a WEM file to OGG using vgmstream-cli."""
+    """Convert a WEM file to OGG using vgmstream-cli piped through soundfile.
+
+    vgmstream decodes to PCM WAV on stdout; soundfile re-encodes to OGG
+    Vorbis at quality 0.3 (~112 kbps stereo) for compact, good-quality output.
+    """
+    no_window = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
+    wav_tmp = None
     try:
-        no_window = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
-        # Try with explicit OGG format flag (required on newer vgmstream builds)
+        # Step 1: vgmstream decodes WEM → WAV (no looping with -i)
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+            wav_tmp = f.name
         result = subprocess.run(
-            [vgmstream, '-F', 'ogg', '-o', out_path, wem_path],
-            capture_output=True, timeout=60, **no_window
+            [vgmstream, '-i', '-o', wav_tmp, wem_path],
+            capture_output=True, timeout=120, **no_window
         )
-        if result.returncode == 0 and os.path.exists(out_path):
-            return True
-        # Fallback: no format flag (older builds auto-detect from extension)
-        result = subprocess.run(
-            [vgmstream, '-o', out_path, wem_path],
-            capture_output=True, timeout=60, **no_window
-        )
-        return result.returncode == 0 and os.path.exists(out_path)
-    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-        print(f"  ✗ vgmstream error: {e}")
+        if result.returncode != 0 or not os.path.exists(wav_tmp) or os.path.getsize(wav_tmp) < 1024:
+            print(f"  ✗ vgmstream error (rc={result.returncode})")
+            return False
+
+        # Step 2: re-encode WAV → OGG at ~256 kbps (compression_level=0.2)
+        if _SOUNDFILE_OK:
+            if getattr(sys, 'frozen', False):
+                # Frozen exe: DLLs are bundled and isolated — direct call is safe
+                with _sf.SoundFile(wav_tmp) as inp:
+                    with _sf.SoundFile(out_path, 'w', samplerate=inp.samplerate,
+                                       channels=inp.channels, format='OGG',
+                                       subtype='VORBIS', compression_level=0.2) as out:
+                        for chunk in inp.blocks(blocksize=inp.samplerate * 10,
+                                                dtype='float32'):
+                            out.write(chunk)
+            else:
+                # Development: run in a subprocess to isolate native DLL issues
+                import json
+                script = (
+                    f'import soundfile as sf;'
+                    f'inp=sf.SoundFile({json.dumps(wav_tmp)});'
+                    f'out=sf.SoundFile({json.dumps(out_path)},"w",'
+                    f'samplerate=inp.samplerate,channels=inp.channels,'
+                    f'format="OGG",subtype="VORBIS",compression_level=0.2);'
+                    f'[out.write(c) for c in inp.blocks(blocksize=inp.samplerate*10,dtype="float32")];'
+                    f'inp.close();out.close()'
+                )
+                enc = subprocess.run(
+                    [sys.executable, '-c', script],
+                    capture_output=True, timeout=120,
+                    cwd=tempfile.gettempdir()
+                )
+                if enc.returncode != 0:
+                    err = enc.stderr.decode(errors='replace').strip()
+                    print(f"  ✗ OGG encode failed (rc={enc.returncode}){': ' + err if err else ''}")
+                    return False
+        else:
+            # soundfile unavailable — rename WAV as OGG (large but functional)
+            print("  ⚠ soundfile not available — audio will be uncompressed")
+            shutil.move(wav_tmp, out_path)
+            wav_tmp = None
+
+        return os.path.exists(out_path)
+
+    except Exception as e:
+        print(f"  ✗ Audio conversion error: {type(e).__name__}: {e}")
         return False
+    finally:
+        if wav_tmp and os.path.exists(wav_tmp):
+            os.unlink(wav_tmp)
 
 
 # ═══════════════════════════════════════════════════════════════

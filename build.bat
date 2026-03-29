@@ -3,7 +3,7 @@ echo RS2IR Converter - Build Script
 echo ================================
 
 :: Install/upgrade dependencies if needed
-pip install --quiet --upgrade pyinstaller mido pillow pycryptodome
+pip install --quiet --upgrade pyinstaller mido pillow pycryptodome soundfile "cffi>=1.0,<2.0" numpy
 
 :: Clean previous build artifacts
 if exist build rmdir /s /q build
