@@ -16,6 +16,8 @@
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
+__version__ = '1.2.0'
+
 import os, sys, zlib, struct, json, math, subprocess, shutil, tempfile, re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -181,8 +183,9 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
         skip(4)                                  # ulong Mask
         frets   = [r_u8() for _ in range(6)]    # byte[6] Frets (255 = not played)
         fingers = [r_u8() for _ in range(6)]    # byte[6] Fingers (0=none,1=index..5=thumb)
-        skip(24 + 32)                            # Notes (6×float) + Name (char[32])
-        chord_templates.append({'frets': frets, 'fingers': fingers})
+        skip(24)                                 # Notes (6×float, unused)
+        name    = r_str(32)                      # char[32] chord name (e.g. "Emin", "D5/A")
+        chord_templates.append({'frets': frets, 'fingers': fingers, 'name': name})
 
     # ── CHORD_NOTES_SECTION  (CHORD_NOTES<size=2376>) ────────────
     skip(r_i32() * 2376)
@@ -284,29 +287,45 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             if note_mask & (NOTE_MASK_HAMMER | NOTE_MASK_PULLOFF): effects.add('hammer')
             if note_mask & NOTE_MASK_TAP:       effects.add('tap')
             if note_mask & NOTE_MASK_SLIDE:     effects.add('slide')
-            effects.add('stroke_up' if pick_dir == 1 else 'stroke_down')
+            if pick_dir == 1: effects.add('stroke_up')   # down-strum is default; omit it
 
             if note_mask & NOTE_MASK_CHORD:
                 if 0 <= chord_id < len(chord_templates):
                     tmpl = chord_templates[chord_id]
+                    # SNG chord template fret[] uses index 0 = lowest string (low E for
+                    # guitar, low E for bass), which is the OPPOSITE of the individual
+                    # note StringIndex convention (RS string 0 = highest string).
+                    # Flip so chord note 'string' values match individual note convention.
+                    tmpl_width = 4 if arr_type == 'bass' else 6
+                    chord_name = tmpl.get('name', '')
                     for s, f in enumerate(tmpl['frets']):
-                        if f != 255:
+                        if f != 255 and s < tmpl_width:
+                            rs_str = (tmpl_width - 1) - s  # flip to RS string convention
                             arr_notes.append({'time': t, 'sustain': sustain,
-                                              'string': s, 'fret': f,
+                                              'string': rs_str, 'fret': f,
                                               'finger': tmpl['fingers'][s],
                                               'effects': effects,
                                               'vibrato': vibrato,
                                               'slide_semitones': 0,
-                                              'bend_data': bend_data})
+                                              'bend_data': bend_data,
+                                              'chord_name': chord_name})
             elif fret_id != 255:
                 # slide_semitones: signed semitone offset at end of sustain
                 slide_st = (slide_to - fret_id) if 0 <= slide_to <= 127 else 0
+                # Bass SNG individual notes use StringIndex 0=low E (opposite of RS
+                # guitar convention where string 0=high e). Normalize to RS convention
+                # so build_midi() treats all arrangements consistently.
+                if arr_type == 'bass':
+                    note_str = (4 - 1) - string_idx
+                else:
+                    note_str = string_idx
                 arr_notes.append({'time': t, 'sustain': sustain,
-                                  'string': string_idx, 'fret': fret_id,
+                                  'string': note_str, 'fret': fret_id,
                                   'finger': 0, 'effects': effects,
                                   'vibrato': vibrato,
                                   'slide_semitones': slide_st,
-                                  'bend_data': bend_data})
+                                  'bend_data': bend_data,
+                                  'chord_name': ''})
 
         skip(r_i32() * 4)   # AverageNotesPerIteration float[]
         skip(r_i32() * 4)   # NotesInIteration1 long[]
@@ -315,11 +334,11 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
 
     # Combine all arrangements: each arrangement is the full song at a specific
     # per-phrase difficulty mix.  Take the union — for any (time, string, fret)
-    # triple, keep one copy.  This yields the densest possible chart across all
-    # difficulty levels without double-counting repeated notes.
+    # triple, keep one copy.  Process high→low difficulty so the richest version
+    # (full chord with name, correct finger/effects) wins the deduplication.
     seen_keys: set[tuple] = set()
     notes: list[dict] = []
-    for _, arr_notes in sorted(all_arrs, key=lambda x: x[0]):  # low→high difficulty
+    for _, arr_notes in sorted(all_arrs, key=lambda x: x[0], reverse=True):  # high→low
         for n in arr_notes:
             # Round time to nearest 5 ms to tolerate float imprecision
             k = (round(n['time'] * 200), n['string'], n['fret'])
@@ -343,6 +362,11 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
         string_count = r_i32()
         if 0 < string_count <= 8 and pos + string_count * 2 <= len(data):
             tuning = [r_i16() for _ in range(string_count)]
+            # Bass SNG stores tuning low→high (str0=low E); normalize to RS convention
+            # (string 0=highest) so build_midi() tuning application is consistent.
+            if arr_type == 'bass':
+                bass_n = min(4, len(tuning))
+                tuning = list(reversed(tuning[:bass_n])) + list(tuning[bass_n:])
 
     return {
         'arr_type':  arr_type,
@@ -522,6 +546,7 @@ class PsarcReader:
 # ═══════════════════════════════════════════════════════════════
 
 # Standard open-string MIDI notes (low→high) for tuning offsets
+# Standard open-string MIDI notes (low→high) for tuning offsets
 # Standard guitar: E2 A2 D3 G3 B3 e4 (strings 5→0 in RS)
 # RS string 0 = high e, string 5 = low E
 GUITAR_OPEN_STANDARD = [40, 45, 50, 55, 59, 64]  # index 0 = low E
@@ -603,8 +628,7 @@ def parse_arrangement(xml_path: str) -> dict:
             efx.add('hammer')
         if int_attr(el, 'tap',         0): efx.add('tap')
         if int_attr(el, 'slideTo', -1) >= 0: efx.add('slide')
-        efx.add('stroke_up' if int_attr(el, 'pickDirection', 0) == 1
-                else 'stroke_down')
+        if int_attr(el, 'pickDirection', 0) == 1: efx.add('stroke_up')  # down-strum is default
         return efx
 
     notes = []
@@ -624,7 +648,7 @@ def parse_arrangement(xml_path: str) -> dict:
                           'string': string, 'fret': fret,
                           'effects': _xml_effects(n), 'vibrato': 0,
                           'slide_semitones': slide_st, 'finger': 0,
-                          'bend_data': []})
+                          'bend_data': [], 'chord_name': ''})
 
     # ── Chords ───────────────────────────────────────────────
     chord_templates = []
@@ -648,6 +672,7 @@ def parse_arrangement(xml_path: str) -> dict:
                 continue
             chord_efx = _xml_effects(ch)
             # Prefer <ChordNotes> child elements — they carry per-string sustain
+            xml_chord_name = chord_templates[chord_id]['name'] if 0 <= chord_id < len(chord_templates) else ''
             chord_notes_el = ch.find('ChordNotes')
             if chord_notes_el is not None and len(chord_notes_el) > 0:
                 for cn in chord_notes_el.findall('Note'):
@@ -660,7 +685,7 @@ def parse_arrangement(xml_path: str) -> dict:
                                       'string': s, 'fret': f,
                                       'effects': chord_efx, 'vibrato': 0,
                                       'slide_semitones': 0, 'finger': fng,
-                                      'bend_data': []})
+                                      'bend_data': [], 'chord_name': xml_chord_name})
             elif 0 <= chord_id < len(chord_templates):
                 # Fallback: expand from ChordTemplate (no per-string sustain)
                 tmpl = chord_templates[chord_id]
@@ -672,7 +697,7 @@ def parse_arrangement(xml_path: str) -> dict:
                                       'string': s, 'fret': f,
                                       'effects': chord_efx, 'vibrato': 0,
                                       'slide_semitones': 0, 'finger': fng,
-                                      'bend_data': []})
+                                      'bend_data': [], 'chord_name': xml_chord_name})
 
     # ── Vocals (for Lyrics.txt) ───────────────────────────────
     vocals = []
@@ -769,12 +794,12 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
                 b['_tick'] += pre_roll_ticks
 
     # ── Open-string MIDI note for each channel ───────────────
-    # Channel 0 = lowest string, channel N = Nth-from-bottom string
-    # RS string 0 = high e (index 5 from bottom), string 5 = low E (index 0)
+    # Channel 0 = lowest string, channel N = Nth-from-bottom string.
+    # RS string 0 = high e (index 5 from bottom), string 5 = low E (index 0).
+    # Both SNG binary and XML use this convention.
     if is_bass:
         num_strings = 4
         open_base   = BASS_OPEN_STANDARD[:]   # [E1, A1, D2, G2]
-        # Apply RS tuning (string0=G string, string3=E string in RS → reversed)
         for i in range(num_strings):
             rs_string = (num_strings - 1) - i   # channel i → RS string
             open_base[i] += tuning[rs_string]
@@ -850,9 +875,12 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     }
 
     # Collect notes grouped by (channel, midi_note) to detect overlaps.
-    # Also keep per-note metadata for ch15 signals and pitch bend.
+    # Also keep per-note metadata for ch15 signals, pitch bend, and chord names.
     note_groups: dict[tuple, list] = {}
     per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end, slide_semitones, bend_data)
+    # chord_name_at_tick: first non-empty chord name seen at each on_tick
+    chord_name_at_tick: dict[int, str] = {}
+    _tick_midi_notes: dict[int, list] = {}  # for music-theory fallback naming
     for note in notes:
         rs_str = note['string']
         fret    = note['fret']
@@ -869,13 +897,22 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             off_tick = _time_to_ticks(note['time'] + sustain, beats)
             note_end = note['time'] + sustain
         else:
-            off_tick = on_tick + max(1, TICKS_PER_BEAT // 8)
+            # No sustain: apply a 16th-note minimum so chord notes render as
+            # visible bars in Immerrock rather than near-invisible slivers.
+            off_tick = on_tick + max(1, TICKS_PER_BEAT // 4)
             note_end = note['time']
 
         key = (channel, midi_note)
         if key not in note_groups:
             note_groups[key] = []
         note_groups[key].append([on_tick, off_tick])
+
+        # Collect MIDI notes per tick for chord name fallback computation
+        chord_name = note.get('chord_name', '')
+        if chord_name and (on_tick not in chord_name_at_tick or not chord_name_at_tick[on_tick]):
+            chord_name_at_tick[on_tick] = chord_name
+        # Also accumulate notes at each tick for music-theory naming below
+        _tick_midi_notes.setdefault(on_tick, []).append(midi_note)
 
         per_note_meta.append((
             channel, on_tick, off_tick,
@@ -887,6 +924,27 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             note.get('slide_semitones', 0),
             note.get('bend_data', []),
         ))
+
+    # Music-theory fallback: for ticks with no template name, try to identify
+    # power chord shapes from the pitch classes. Checks all pairs of pitch classes
+    # present in the chord, so it works even if extra notes are present.
+    _NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+    for tick, midi_notes in _tick_midi_notes.items():
+        if tick in chord_name_at_tick:
+            continue  # already named by template
+        pcs = sorted(set(n % 12 for n in midi_notes))
+        for i in range(len(pcs)):
+            for j in range(i + 1, len(pcs)):
+                a, b = pcs[i], pcs[j]
+                diff = (b - a) % 12
+                if diff == 7:   # b is perfect 5th above a → X5 root = a
+                    chord_name_at_tick[tick] = _NOTE_NAMES[a] + '5'
+                    break
+                elif diff == 5:  # b is perfect 4th above a → X5 root = b
+                    chord_name_at_tick[tick] = _NOTE_NAMES[b] + '5'
+                    break
+            if tick in chord_name_at_tick:
+                break
 
     # Cap off_tick to prevent same-pitch overlap.
     # Leave at least a 32nd-note gap so Immerrock treats them as separate events.
@@ -903,25 +961,20 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             events.append((on_tick,  'on',  channel, midi_note, VELOCITY))
             events.append((off_tick, 'off', channel, midi_note, 0))
 
-    # ch15 chord-mode trigger (note 30) at every note-on tick.
-    on_ticks = {e[0] for e in events if e[1] == 'on' and e[2] < 15}
-    for tick in on_ticks:
-        events.append((tick, 'on',  15, 30, 100))
-        events.append((tick, 'off', 15, 30, 0))
-
     # ch15 finger placement (notes 31–35) and note effects (notes 12–20).
-    # Velocity encodes which string: (channel + 1) * 5 + 1
+    # Velocity encodes which string: channel * 5 + 1
+    # ch0->1, ch1->6, ch2->11, ch3->16, ch4->21, ch5->26  (matches EoF convention)
     for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end, slide_semitones, bend_data in per_note_meta:
-        str_vel = (channel + 1) * 5 + 1
+        str_vel = channel * 5 + 1
 
         if 1 <= finger <= 5:
             fn = 30 + finger  # 31=Index, 32=Middle, 33=Ring, 34=Little, 35=Thumb
-            events.append((on_tick, 'on',  15, fn, str_vel))
+            events.append((on_tick, 'mod', 15, fn, str_vel))
             events.append((on_tick, 'off', 15, fn, 0))
 
         for eff, eff_note in CH15_EFFECTS.items():
             if eff in effects:
-                events.append((on_tick, 'on',  15, eff_note, str_vel))
+                events.append((on_tick, 'mod', 15, eff_note, str_vel))
                 events.append((on_tick, 'off', 15, eff_note, 0))
 
         # Pitch bend — slides, bends, and vibrato are mutually exclusive;
@@ -965,18 +1018,38 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             reset_tick = _time_to_ticks(note_end, beats)
             events.append((reset_tick, 'pb', channel, 0, 0))
 
-    # Sort: by tick; ch15 and pb events before regular note-ons at same tick;
-    # note-offs before note-ons at same tick.
+    # Sort order within the same tick (per dev spec):
+    #   1. note-offs (prevent overlap with incoming notes)
+    #   2. pitch bends (set pitch before note-on fires)
+    #   3. real note-ons  (ch 0–14)
+    #   4. ch15 modifier note-ons  (zero-length; must follow real notes)
     def _sort_key(e):
         tick, etype, ch, val, vel = e
-        type_order = 0 if etype in ('off', 'pb') else 1
-        ch_order   = 0 if ch == 15 or etype == 'pb' else 1
-        return (tick, ch_order, type_order)
+        if etype == 'off':   order = 0
+        elif etype == 'pb':  order = 1
+        elif etype == 'on':  order = 2   # real note-on
+        else:                order = 3   # 'mod' = ch15 modifier note-on
+        return (tick, order)
     events.sort(key=_sort_key)
 
-    # Convert to delta-time messages
+    # Build sorted list of ticks where note-ons occur (for text meta ordering)
+    on_tick_set = sorted({e[0] for e in events if e[1] == 'on' and e[2] < 15})
+
+    # Convert to delta-time messages; insert text meta before note-ons at each tick
     prev_tick = 0
+    text_iter = iter(on_tick_set)
+    next_text_tick = next(text_iter, None)
+
     for abs_tick, etype, channel, value, velocity in events:
+        # Emit chord/note name text meta just before the first event at this tick
+        while next_text_tick is not None and next_text_tick <= abs_tick:
+            name = chord_name_at_tick.get(next_text_tick, '')
+            if name:
+                delta = max(0, next_text_tick - prev_tick)
+                inst_track.append(mido.MetaMessage('text', text=name, time=delta))
+                prev_tick = next_text_tick
+            next_text_tick = next(text_iter, None)
+
         delta = max(0, abs_tick - prev_tick)
         prev_tick = abs_tick
         if etype == 'pb':
@@ -1187,10 +1260,6 @@ def build_lyrics_txt(vocals: list[dict], song_length: float = 0) -> str:
         prev_time = v['time']
 
     emit()  # flush any remaining
-
-    if song_length > 0:
-        ts = _format_lyric_timestamp(song_length)
-        lines.append(f'{ts} "Hide();"')
 
     return '\r\n'.join(lines)
 

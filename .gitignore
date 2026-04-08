@@ -54,6 +54,13 @@ desktop.ini
 # PyInstaller intermediate files
 *.spec.bak
 
+# Test output folders
+test_output*/
+test_input*/
+
+# Claude Code session memory
+.claude/
+
 # Misc
 *.log
 *.tmp
