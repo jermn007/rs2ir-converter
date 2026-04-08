@@ -61,6 +61,9 @@ test_input*/
 # Claude Code session memory
 .claude/
 
+# Icon generation helper — run manually if icon.ico needs to be regenerated
+generate_icon.py
+
 # Misc
 *.log
 *.tmp
