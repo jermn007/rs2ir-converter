@@ -292,10 +292,8 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             if note_mask & NOTE_MASK_CHORD:
                 if 0 <= chord_id < len(chord_templates):
                     tmpl = chord_templates[chord_id]
-                    # SNG chord template fret[] uses index 0 = lowest string (low E for
-                    # guitar, low E for bass), which is the OPPOSITE of the individual
-                    # note StringIndex convention (RS string 0 = highest string).
-                    # Flip so chord note 'string' values match individual note convention.
+                    # SNG uses index 0 = low E for both chord templates and individual
+                    # notes. Flip to RS convention (0 = high e) for build_midi().
                     tmpl_width = 4 if arr_type == 'bass' else 6
                     chord_name = tmpl.get('name', '')
                     for s, f in enumerate(tmpl['frets']):
@@ -312,13 +310,10 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             elif fret_id != 255:
                 # slide_semitones: signed semitone offset at end of sustain
                 slide_st = (slide_to - fret_id) if 0 <= slide_to <= 127 else 0
-                # Bass SNG individual notes use StringIndex 0=low E (opposite of RS
-                # guitar convention where string 0=high e). Normalize to RS convention
-                # so build_midi() treats all arrangements consistently.
-                if arr_type == 'bass':
-                    note_str = (4 - 1) - string_idx
-                else:
-                    note_str = string_idx
+                # SNG individual notes use StringIndex 0=low E for both guitar and bass.
+                # Flip to RS convention (0=high e) so build_midi() sees consistent values.
+                tmpl_w = 4 if arr_type == 'bass' else 6
+                note_str = (tmpl_w - 1) - string_idx
                 arr_notes.append({'time': t, 'sustain': sustain,
                                   'string': note_str, 'fret': fret_id,
                                   'finger': 0, 'effects': effects,
@@ -897,9 +892,12 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             off_tick = _time_to_ticks(note['time'] + sustain, beats)
             note_end = note['time'] + sustain
         else:
-            # No sustain: apply a 16th-note minimum so chord notes render as
-            # visible bars in Immerrock rather than near-invisible slivers.
-            off_tick = on_tick + max(1, TICKS_PER_BEAT // 4)
+            # No sustain: apply a minimum duration so notes render as visible
+            # bars. Chords get a half-beat so the chord diagram stays readable;
+            # individual notes get a 16th-note to keep fast runs feeling snappy.
+            is_chord = bool(note.get('chord_name'))
+            min_ticks = TICKS_PER_BEAT // 2 if is_chord else TICKS_PER_BEAT // 4
+            off_tick = on_tick + max(1, min_ticks)
             note_end = note['time']
 
         key = (channel, midi_note)
