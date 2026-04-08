@@ -21,7 +21,7 @@ a = Analysis(
     ['rs_to_immerrock.py'],
     pathex=[],
     binaries=vgmstream_binaries,
-    datas=[('THIRD_PARTY_LICENSES.txt', '.')],
+    datas=[('THIRD_PARTY_LICENSES.txt', '.'), ('icon.ico', '.')],
     hiddenimports=['mido', 'mido.backends.midi', 'soundfile'],
     hookspath=[],
     hooksconfig={},
@@ -51,7 +51,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,           # swap in a .ico file here if desired
+    icon='icon.ico',
 )
 
 coll = COLLECT(

@@ -1657,6 +1657,14 @@ def run_gui():
     root.geometry("680x540")
     root.configure(bg='#1e1e2e')
 
+    # Window icon (title bar + taskbar)
+    _icon_path = os.path.join(
+        getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))),
+        'icon.ico'
+    )
+    if os.path.exists(_icon_path):
+        root.iconbitmap(_icon_path)
+
     style = ttk.Style()
     style.theme_use('clam')
     style.configure('TButton', background='#7c3aed', foreground='white',
