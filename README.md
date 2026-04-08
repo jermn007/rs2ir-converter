@@ -50,7 +50,7 @@ Custom songs (CDLCs) can be downloaded from [ignition4.customsforge.com](https:/
 
 ### GUI (recommended)
 
-![RS2IR Converter GUI](RS2IRGUI.png)
+<p align="center"><img src="RS2IRGUI.png" alt="RS2IR Converter GUI" /></p>
 
 - **Select Files** - pick individual `.psarc` files
 - **Select Folder** - pick a folder; all `.psarc` files inside are queued
