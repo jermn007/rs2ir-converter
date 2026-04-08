@@ -1665,6 +1665,17 @@ def run_gui():
     if os.path.exists(_icon_path):
         root.iconbitmap(_icon_path)
 
+    # Dark title bar — Windows 10 build 18985+ / Windows 11
+    try:
+        import ctypes
+        root.update()
+        _hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            _hwnd, 20, ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int)
+        )
+    except Exception:
+        pass  # non-Windows or older Windows — skip silently
+
     style = ttk.Style()
     style.theme_use('clam')
     style.configure('TButton', background='#7c3aed', foreground='white',

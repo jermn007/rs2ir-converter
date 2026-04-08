@@ -1,7 +1,7 @@
 """
 Generate icon.ico for RS2IR Converter.
-Renders guitar (guitar emoji) + VR goggles (goggles emoji) on a dark purple
-background using Windows' Segoe UI Emoji font, then bakes a multi-size ICO.
+Renders guitar emoji on a dark purple background using Windows' Segoe UI Emoji
+font, then bakes a multi-size ICO.
 
 Run once before building:
     python generate_icon.py
@@ -9,21 +9,26 @@ Run once before building:
 
 from PIL import Image, ImageDraw, ImageFont
 
-# ── Palette (matches app GUI) ───────────────────────────────────────────────
+# Palette (matches app GUI)
 BG_COLOR     = (30, 30, 46, 255)    # #1e1e2e
 EMOJI_COLOR  = (167, 139, 250)      # #a78bfa
 
 EMOJI_FONT   = r"C:\Windows\Fonts\seguiemj.ttf"   # Segoe UI Emoji (Windows 10/11)
 
-# Pillow ICO encoder resamples from a single source image; render large and
-# let it produce all standard sizes via thumbnail downscale.
 RENDER_SIZE  = 256
 ICO_SIZES    = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
 OUTPUT       = "icon.ico"
-SUPER        = 4    # render at 4× then downscale for antialiasing
+SUPER        = 4    # render at 4x then downscale for antialiasing
 
 
-def make_master() -> Image.Image:
+def _load_font(size):
+    try:
+        return ImageFont.truetype(EMOJI_FONT, size)
+    except OSError:
+        return ImageFont.load_default()
+
+
+def make_master():
     """Render the icon at RENDER_SIZE px using supersampling."""
     ss = RENDER_SIZE * SUPER
 
@@ -36,24 +41,10 @@ def make_master() -> Image.Image:
 
     cx, cy = ss // 2, ss // 2
 
-    # Guitar — left of centre, large
-    try:
-        font_g = ImageFont.truetype(EMOJI_FONT, int(ss * 0.55))
-    except OSError:
-        font_g = ImageFont.load_default()
-
-    draw.text((int(cx * 0.70), cy), "\U0001f3b8",   # 🎸
+    # Guitar emoji - centered, fills most of the frame
+    font_g = _load_font(int(ss * 0.82))
+    draw.text((cx, cy), "\U0001f3b8",  # guitar
               font=font_g, anchor="mm",
-              fill=EMOJI_COLOR, embedded_color=True)
-
-    # VR goggles — top-right badge, smaller
-    try:
-        font_v = ImageFont.truetype(EMOJI_FONT, int(ss * 0.30))
-    except OSError:
-        font_v = font_g
-
-    draw.text((int(ss * 0.80), int(ss * 0.22)), "\U0001f97d",  # 🥽
-              font=font_v, anchor="mm",
               fill=EMOJI_COLOR, embedded_color=True)
 
     # Downscale with Lanczos for smooth edges
@@ -64,7 +55,7 @@ def main():
     print("Rendering master frame ...")
     master = make_master()
     master.save(OUTPUT, format="ICO", sizes=ICO_SIZES)
-    print(f"Saved {OUTPUT}  ({len(ICO_SIZES)} sizes: {[s[0] for s in ICO_SIZES]})")
+    print("Saved: " + OUTPUT + "  (" + str(len(ICO_SIZES)) + " sizes: " + str([s[0] for s in ICO_SIZES]) + ")")
 
 
 if __name__ == "__main__":
