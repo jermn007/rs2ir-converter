@@ -174,8 +174,6 @@ Bass uses channels 0–3 only.
 
 MIDI note number = open-string note + fret + tuning offset. Chords are expanded from the chord template table into one note-on per played string, all at the same tick. A 32nd-note gap is enforced between consecutive same-pitch notes to prevent sustain bars from visually merging separate strums.
 
-A **chord mode trigger** (Channel 15, note 30, zero-duration) is emitted at every note-on tick, matching the Immerrock/EoF MIDI spec so that chord diagrams render correctly.
-
 **Channel 15 - Note effects and finger placement**
 
 Additional zero-duration note-on events on Channel 15 carry per-note metadata. Velocity encodes the string: `channel × 5 + 1`.
@@ -190,7 +188,6 @@ Additional zero-duration note-on events on Channel 15 carry per-note metadata. V
 | 18 | Stroke down |
 | 19 | Stroke up |
 | 20 | Slide |
-| 30 | Chord mode trigger (every note-on tick) |
 | 31–35 | Finger placement: Index, Middle, Ring, Little, Thumb |
 
 Finger signals (31–35) are emitted for chord notes, which carry finger data from the RS chord template. Individual notes rarely have explicit finger assignments in RS CDLC data.
