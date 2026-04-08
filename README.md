@@ -118,7 +118,7 @@ Once conversion is complete, copy each `Artist - Song Title/` folder into the `I
 3. Navigate to `sdcard/Download/ImmerrockCustomSongs/`
 4. Drag and drop song folders from Windows Explorer into the SideQuest file pane
 
-![SideQuest ImmerrockCustomSongs folder](SideQuestFolder.png)
+<p align="center"><img src="SideQuestFolder.png" alt="SideQuest ImmerrockCustomSongs folder" width="500" /></p>
 
 ---
 
