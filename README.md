@@ -126,7 +126,7 @@ Once conversion is complete, copy each `Artist - Song Title/` folder into the `I
 
 ### 1. PSARC Extraction
 
-A `.psarc` is a container archive. The table of contents (TOC) is encrypted with **AES-256-CFB** using the publicly-known RS PSARC key. After decryption the TOC lists every internal file; content blocks are zlib-compressed and decompressed on demand. No temporary files are written to disk.
+A `.psarc` is a container archive used by CDLC packages. The table of contents (TOC) is encrypted with **AES-256-CFB** using a publicly-known key. After decryption the TOC lists every internal file; content blocks are zlib-compressed and decompressed on demand. No temporary files are written to disk.
 
 ### 2. Arrangement Parsing
 

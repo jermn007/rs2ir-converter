@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║         Rocksmith 2014 PSARC  →  Immerrock Converter                ║
+║         RS CDLC  →  Immerrock Converter                             ║
 ║                                                                      ║
 ║  Usage:                                                              ║
 ║    GUI mode:     python rs_to_immerrock.py                         ║
@@ -16,7 +16,7 @@
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
-__version__ = '1.2.1'
+__version__ = '1.2.2'
 
 import os, sys, zlib, struct, json, math, subprocess, shutil, tempfile, re
 import xml.etree.ElementTree as ET
@@ -381,7 +381,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
 
 
 class PsarcReader:
-    """Reads and extracts Rocksmith 2014 PSARC archives."""
+    """Reads and extracts RS PSARC archives."""
 
     HEADER_SIZE      = 32
     TOC_ENTRY_SIZE   = 30
@@ -549,7 +549,7 @@ BASS_OPEN_STANDARD   = [28, 33, 38, 43]           # index 0 = low E
 
 
 def parse_arrangement(xml_path: str) -> dict:
-    """Parse a Rocksmith 2014 RS arrangement XML into a structured dict."""
+    """Parse an RS arrangement XML into a structured dict."""
     tree = ET.parse(xml_path)
     root = tree.getroot()
 
@@ -1682,7 +1682,7 @@ def run_gui():
     style.configure('TProgressbar', troughcolor='#2d2d3f', background='#7c3aed')
 
     # ── Header ───────────────────────────────────────────────
-    tk.Label(root, text='Rocksmith 2014 → Immerrock',
+    tk.Label(root, text='RS → Immerrock',
              bg='#1e1e2e', fg='#a78bfa',
              font=('Segoe UI', 16, 'bold')).pack(pady=(16, 2))
     tk.Label(root, text='Convert PSARC files to Immerrock custom songs',
