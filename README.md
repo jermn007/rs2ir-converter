@@ -1,6 +1,6 @@
 # RS2IR Converter
 
-Convert **Rocksmith 2014 CDLC** (`.psarc`) files into [**IMMERROCK**](https://immerrock.com/) custom song packages for Meta Quest.
+Convert **RS CDLC** (`.psarc`) files into [**IMMERROCK**](https://immerrock.com/) custom song packages for Meta Quest.
 
 Supports Lead, Rhythm, and Bass guitar tracks with full tuning, tempo-map, and section data. Lyrics are exported when present. Album art is converted automatically.
 
@@ -126,7 +126,7 @@ Once conversion is complete, copy each `Artist - Song Title/` folder into the `I
 
 ### 1. PSARC Extraction
 
-A `.psarc` is a container archive. The table of contents (TOC) is encrypted with **AES-256-CFB** using the publicly-known RS PSARC key. After decryption the TOC lists every internal file; content blocks are zlib-compressed and decompressed on demand. No temporary files are written to disk.
+A `.psarc` is a container archive used by CDLC packages. The table of contents (TOC) is encrypted with **AES-256-CFB** using a publicly-known key. After decryption the TOC lists every internal file; content blocks are zlib-compressed and decompressed on demand. No temporary files are written to disk.
 
 ### 2. Arrangement Parsing
 
