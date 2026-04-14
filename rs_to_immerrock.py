@@ -1134,6 +1134,7 @@ def build_info_txt(arrangements: list[dict], song_ogg_path: str = None) -> str:
         f"Rhythm_Tuning={rhythm_tuning_str}",
         f"Bass_Tuning={bass_tuning_str}",
         f"ChartDelay={chart_delay}",
+        f"Comment_Song=Converted with RS2IR v{__version__}",
     ]
     return '\r\n'.join(lines)
 
