@@ -246,6 +246,11 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
     NOTE_MASK_PULLOFF    = 0x0400
     NOTE_MASK_SLIDE      = 0x0800
     NOTE_MASK_TAP        = 0x4000
+    # linkNext is compiled into the SNG as NOTE_MASK_PARENT on the note that
+    # links forward (its target gets NOTE_MASK_CHILD). Confirmed against
+    # RocksmithToolkit's Sng2014 constants — a slide note with PARENT set is a
+    # legato slide; without it, a shift slide.
+    NOTE_MASK_PARENT     = 0x08000000
     all_arrs = []   # list of (difficulty, notes)
     for _ in range(r_i32()):
         difficulty = r_i32()            # Difficulty (long)
@@ -290,11 +295,9 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             if pick_dir == 1: effects.add('stroke_up')   # down-strum is default; omit it
             # Slides are carried as raw target frets (slide_to / slide_unpitch)
             # and classified in build_midi via _classify_slide, not as an effect.
-            # TODO(slide): SNG legato-vs-shift needs the linkNext note-mask bit —
-            # not yet confirmed, so pitched SNG slides default to shift (link_next=0),
-            # the safe choice (never hides a re-picked target note). Verify the bit
-            # with Motanum, then set link_next accordingly.
-            link_next = 0
+            # linkNext (legato) is compiled into the SNG as NOTE_MASK_PARENT on the
+            # slide note, so a pitched slide with PARENT set is legato, else shift.
+            link_next = 1 if (note_mask & NOTE_MASK_PARENT) else 0
 
             if note_mask & NOTE_MASK_CHORD:
                 if 0 <= chord_id < len(chord_templates):
