@@ -264,8 +264,9 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             skip(2)                # AnchorFretId + AnchorWidth
             chord_id   = r_i32()   # ChordId
             skip(4 + 8 + 4 + 6)   # ChordNotesId, PhraseIds, FingerPrints, IterNotes
-            slide_to   = r_i8()    # SlideTo: target fret, -1 = no slide
-            skip(2)                # SlideUnpitchTo, LeftHand
+            slide_to      = r_i8() # SlideTo: target fret, -1 = no slide
+            slide_unpitch = r_i8() # SlideUnpitchTo: unpitched-slide target fret, -1 = none
+            skip(1)                # LeftHand
             skip(1)                # Tap (already captured via NOTE_MASK_TAP)
             pick_dir   = r_u8()    # PickDirection: 0=down, 1=up
             skip(2)                # Slap, Pluck
@@ -286,8 +287,14 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             if note_mask & NOTE_MASK_HARMONIC:  effects.add('harmonic')
             if note_mask & (NOTE_MASK_HAMMER | NOTE_MASK_PULLOFF): effects.add('hammer')
             if note_mask & NOTE_MASK_TAP:       effects.add('tap')
-            if note_mask & NOTE_MASK_SLIDE:     effects.add('slide')
             if pick_dir == 1: effects.add('stroke_up')   # down-strum is default; omit it
+            # Slides are carried as raw target frets (slide_to / slide_unpitch)
+            # and classified in build_midi via _classify_slide, not as an effect.
+            # TODO(slide): SNG legato-vs-shift needs the linkNext note-mask bit —
+            # not yet confirmed, so pitched SNG slides default to shift (link_next=0),
+            # the safe choice (never hides a re-picked target note). Verify the bit
+            # with Motanum, then set link_next accordingly.
+            link_next = 0
 
             if note_mask & NOTE_MASK_CHORD:
                 if 0 <= chord_id < len(chord_templates):
@@ -304,12 +311,14 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
                                               'finger': tmpl['fingers'][s],
                                               'effects': effects,
                                               'vibrato': vibrato,
-                                              'slide_semitones': 0,
+                                              # Per-string chord slides live in the
+                                              # CHORD_NOTES_SECTION (not yet parsed); no
+                                              # slide on SNG chord notes for now.
+                                              'slide_to': -1, 'slide_unpitch_to': -1,
+                                              'link_next': 0,
                                               'bend_data': bend_data,
                                               'chord_name': chord_name})
             elif fret_id != 255:
-                # slide_semitones: signed semitone offset at end of sustain
-                slide_st = (slide_to - fret_id) if 0 <= slide_to <= 127 else 0
                 # SNG individual notes use StringIndex 0=low E for both guitar and bass.
                 # Flip to RS convention (0=high e) so build_midi() sees consistent values.
                 tmpl_w = 4 if arr_type == 'bass' else 6
@@ -318,7 +327,9 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
                                   'string': note_str, 'fret': fret_id,
                                   'finger': 0, 'effects': effects,
                                   'vibrato': vibrato,
-                                  'slide_semitones': slide_st,
+                                  'slide_to': slide_to,
+                                  'slide_unpitch_to': slide_unpitch,
+                                  'link_next': link_next,
                                   'bend_data': bend_data,
                                   'chord_name': ''})
 
@@ -622,9 +633,15 @@ def parse_arrangement(xml_path: str) -> dict:
         if int_attr(el, 'hammerOn',    0) or int_attr(el, 'pullOff', 0):
             efx.add('hammer')
         if int_attr(el, 'tap',         0): efx.add('tap')
-        if int_attr(el, 'slideTo', -1) >= 0: efx.add('slide')
         if int_attr(el, 'pickDirection', 0) == 1: efx.add('stroke_up')  # down-strum is default
         return efx
+
+    def _xml_slide(el):
+        # Slides are carried as raw target frets and classified in build_midi.
+        # EoF exports use slideUnpitchTo; RS game XML uses slideUnpitchedTo.
+        return (int_attr(el, 'slideTo', -1),
+                int_attr(el, 'slideUnpitchedTo', int_attr(el, 'slideUnpitchTo', -1)),
+                int_attr(el, 'linkNext', 0))
 
     notes = []
     notes_el = root.find('Notes')
@@ -637,12 +654,12 @@ def parse_arrangement(xml_path: str) -> dict:
             ignore   = int_attr(n,  'ignore', 0)
             if ignore:
                 continue
-            slide_to = int_attr(n, 'slideTo', -1)
-            slide_st = (slide_to - fret) if slide_to >= 0 else 0
+            slide_to, slide_un, link_next = _xml_slide(n)
             notes.append({'time': t, 'sustain': sustain,
                           'string': string, 'fret': fret,
                           'effects': _xml_effects(n), 'vibrato': 0,
-                          'slide_semitones': slide_st, 'finger': 0,
+                          'slide_to': slide_to, 'slide_unpitch_to': slide_un,
+                          'link_next': link_next, 'finger': 0,
                           'bend_data': [], 'chord_name': ''})
 
     # ── Chords ───────────────────────────────────────────────
@@ -675,11 +692,14 @@ def parse_arrangement(xml_path: str) -> dict:
                     f    = int_attr(cn, 'fret')
                     sust = float_attr(cn, 'sustain', sustain)
                     fng  = int_attr(cn, 'leftHand', 0)
+                    cn_slide_to, cn_slide_un, cn_link = _xml_slide(cn)
                     if f >= 0:
                         notes.append({'time': t, 'sustain': sust,
                                       'string': s, 'fret': f,
                                       'effects': chord_efx, 'vibrato': 0,
-                                      'slide_semitones': 0, 'finger': fng,
+                                      'slide_to': cn_slide_to,
+                                      'slide_unpitch_to': cn_slide_un,
+                                      'link_next': cn_link, 'finger': fng,
                                       'bend_data': [], 'chord_name': xml_chord_name})
             elif 0 <= chord_id < len(chord_templates):
                 # Fallback: expand from ChordTemplate (no per-string sustain)
@@ -691,7 +711,8 @@ def parse_arrangement(xml_path: str) -> dict:
                         notes.append({'time': t, 'sustain': sustain,
                                       'string': s, 'fret': f,
                                       'effects': chord_efx, 'vibrato': 0,
-                                      'slide_semitones': 0, 'finger': fng,
+                                      'slide_to': -1, 'slide_unpitch_to': -1,
+                                      'link_next': 0, 'finger': fng,
                                       'bend_data': [], 'chord_name': xml_chord_name})
 
     # ── Vocals (for Lyrics.txt) ───────────────────────────────
@@ -765,13 +786,74 @@ def _assign_beat_ticks(beats: list[dict]) -> list[dict]:
     return beats
 
 
+# Immerrock slide types → ch15 note number (NoteEffectChart.png, confirmed by
+# Motanum and verified against the debug reference MIDI).
+SLIDE_TYPE_NOTES = {
+    'slide_legato':   20,   # pitched slide, target note's mesh hidden (RS linkNext)
+    'slide_shift':    21,   # pitched slide, target re-articulated
+    'slide_out_down': 22,   # unpitched slide off toward the nut
+    'slide_out_up':   23,   # unpitched slide off toward the body
+}
+
+
+def _classify_slide(note: dict) -> str | None:
+    """Map a note's RS slide data to an Immerrock slide type, or None.
+
+    Pitched slide (``slide_to`` >= 0) → legato when the note links into the
+    next one (RS ``linkNext``), otherwise a shift slide. Unpitched slide
+    (``slide_unpitch_to`` >= 0) → out-down / out-up by direction relative to
+    the fretted position (the distance itself is cosmetic in Immerrock).
+    """
+    slide_to = note.get('slide_to', -1)
+    if slide_to is not None and slide_to >= 0:
+        return 'slide_legato' if note.get('link_next') else 'slide_shift'
+    slide_un = note.get('slide_unpitch_to', -1)
+    if slide_un is not None and slide_un >= 0:
+        return 'slide_out_down' if slide_un < note.get('fret', 0) else 'slide_out_up'
+    return None
+
+
+def _synthesize_slide_targets(notes: list[dict]) -> list[dict]:
+    """Append a landing note for any pitched slide that lacks one.
+
+    Immerrock rebuilds a pitched slide's tail toward the next note on the same
+    string, so a slide needs a following same-string note to slide into. RS
+    charts frequently store a slide as a single note (no charted target), so we
+    synthesize a plain note at the ``slide_to`` fret at the slide's end. If the
+    chart already lands a note on that string there (as EoF two-note exports
+    do), we leave it alone to avoid a doubled note-on.
+    """
+    EPS = 0.06  # seconds — tolerance for "a note already lands at the slide end"
+    existing = [(n['string'], n['time']) for n in notes]
+    synth: list[dict] = []
+    for n in notes:
+        if _classify_slide(n) not in ('slide_legato', 'slide_shift'):
+            continue
+        slide_to = n.get('slide_to', -1)
+        if slide_to < 0:
+            continue
+        end_t = n['time'] + n.get('sustain', 0.0)
+        if any(s == n['string'] and abs(t - end_t) <= EPS for s, t in existing):
+            continue  # a real landing note is already charted here
+        synth.append({
+            'time': end_t, 'sustain': 0.0,
+            'string': n['string'], 'fret': slide_to, 'finger': 0,
+            'effects': set(), 'vibrato': 0,
+            'bend_data': [], 'chord_name': '',
+            'slide_to': -1, 'slide_unpitch_to': -1, 'link_next': 0,
+        })
+    if not synth:
+        return notes
+    return sorted(notes + synth, key=lambda n: n['time'])
+
+
 def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFile:
     """
     Convert a parsed RS arrangement dict to a mido MidiFile
     matching the Immerrock format.
     """
     beats  = _assign_beat_ticks(arr['beats'])
-    notes  = arr['notes']
+    notes  = _synthesize_slide_targets(arr['notes'])
     tuning = arr['tuning']
 
     # ── Pre-roll offset ───────────────────────────────────────
@@ -857,7 +939,8 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     VIBRATO_AMPLITUDE = 384   # peak deviation in PB units (~0.3 semitone), per dev
     VIBRATO_STEP_SEC  = 1.0 / (VIBRATO_RATE_HZ * 8)                 # 8 steps/cycle
 
-    # ch15 note-effect map: RS effect name → Immerrock MIDI note number
+    # ch15 note-effect map: RS effect name → Immerrock MIDI note number.
+    # Slides are handled separately via _classify_slide / SLIDE_TYPE_NOTES.
     CH15_EFFECTS = {
         'palm_mute':   12,
         'dead':        13,
@@ -866,13 +949,12 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
         'tap':         17,
         'stroke_down': 18,
         'stroke_up':   19,
-        'slide':       20,
     }
 
     # Collect notes grouped by (channel, midi_note) to detect overlaps.
     # Also keep per-note metadata for ch15 signals, pitch bend, and chord names.
     note_groups: dict[tuple, list] = {}
-    per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end, slide_semitones, bend_data)
+    per_note_meta: list[tuple] = []  # (channel, on_tick, off_tick_raw, finger, effects, vibrato, note_time, note_end, slide_type, bend_data)
     # chord_name_at_tick: first non-empty chord name seen at each on_tick
     chord_name_at_tick: dict[int, str] = {}
     _tick_midi_notes: dict[int, list] = {}  # for music-theory fallback naming
@@ -919,7 +1001,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             note.get('vibrato', 0),
             note['time'],
             note_end,
-            note.get('slide_semitones', 0),
+            _classify_slide(note),
             note.get('bend_data', []),
         ))
 
@@ -962,7 +1044,7 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
     # ch15 finger placement (notes 31–35) and note effects (notes 12–20).
     # Velocity encodes which string: channel * 5 + 1
     # ch0->1, ch1->6, ch2->11, ch3->16, ch4->21, ch5->26  (matches EoF convention)
-    for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end, slide_semitones, bend_data in per_note_meta:
+    for channel, on_tick, off_tick, finger, effects, vibrato, note_time, note_end, slide_type, bend_data in per_note_meta:
         str_vel = channel * 5 + 1
 
         if 1 <= finger <= 5:
@@ -975,23 +1057,19 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
                 events.append((on_tick, 'mod', 15, eff_note, str_vel))
                 events.append((on_tick, 'off', 15, eff_note, 0))
 
-        # Pitch bend — slides, bends, and vibrato are mutually exclusive;
-        # slides take priority, then bends, then vibrato.
+        # Slide marker (ch15 20/21/22/23). Immerrock rebuilds the tail toward
+        # the next same-string note; no pitch bend is emitted for a slide.
+        if slide_type is not None:
+            events.append((on_tick, 'mod', 15, SLIDE_TYPE_NOTES[slide_type], str_vel))
+            events.append((on_tick, 'off', 15, SLIDE_TYPE_NOTES[slide_type], 0))
+
+        # Pitch bend — a slide, bend, or vibrato are mutually exclusive on a
+        # note. A slide emits NO pitch bend (mixing them builds multiple tails
+        # and renders wrong, per Motanum); otherwise bend takes priority, then
+        # vibrato.
         duration = note_end - note_time
-        if slide_semitones and duration > 0:
-            # Slide: linear sweep from neutral to target over the sustain.
-            # Final event stays at full value (no reset) so Immerrock can
-            # draw the trail endpoint.
-            SLIDE_STEPS = 16
-            pb_target = max(-8192, min(8191,
-                            slide_semitones * PB_SEMITONE_UNITS))
-            for i in range(SLIDE_STEPS + 1):
-                frac     = i / SLIDE_STEPS
-                pb_value = int(pb_target * frac)
-                t        = note_time + frac * duration
-                tick     = _time_to_ticks(t, beats)
-                events.append((tick, 'pb', channel, pb_value, 0))
-            # No reset — leave pitch at target value.
+        if slide_type is not None:
+            pass  # slide handled above; suppress bend/vibrato pitch events
         elif bend_data:
             # Bend: follow the RS bend envelope from the SNG BEND_DATA_SECTION.
             # Times in bend_data are absolute (same scale as note_time).
