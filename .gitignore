@@ -15,6 +15,12 @@ env/
 # Input files — PSARCs can be large; don't commit them
 *.psarc
 
+# Large binary debug reference media (kept locally, not committed).
+# The small text/chart references in Updates-2026-08 stay tracked for the
+# slide validation harness (tests/validate_slides.py).
+Updates-2026-08/*.wav
+Updates-2026-08/*.ogg
+
 # Output song folders — generated content, not source
 # (add exceptions below if you want to commit specific test outputs)
 */GGLead.mid
