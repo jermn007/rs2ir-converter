@@ -187,16 +187,25 @@ Additional zero-duration note-on events on Channel 15 carry per-note metadata. V
 | 17 | Tapping |
 | 18 | Stroke down |
 | 19 | Stroke up |
-| 20 | Slide |
+| 20 | Legato slide (pitched, target note's mesh hidden) |
+| 21 | Shift slide (pitched, target re-plucked) |
+| 22 | Slide out down (unpitched, toward the nut) |
+| 23 | Slide out up (unpitched, toward the body) |
 | 31–35 | Finger placement: Index, Middle, Ring, Little, Thumb |
 
 Finger signals (31–35) are emitted for chord notes, which carry finger data from the RS chord template. Individual notes rarely have explicit finger assignments in RS CDLC data.
 
-**Pitch bend**
+**Slides**
 
-Slides, bends, and vibrato are handled as distinct effect types. Priority order: slide > bend > vibrato.
+Slides are encoded entirely by the ch15 marker (notes 20–23) plus the notes themselves — **no pitch bend**. Immerrock rebuilds a pitched slide's tail toward the next note on the same string, so:
 
-- **Slides** - a 16-step linear pitch-bend sweep from neutral (0) to the target fret offset over the full sustain. The final event stays at the target pitch (no reset) so Immerrock can draw the slide trail to its endpoint.
+- **Legato / shift** (notes 20 / 21) are pitched. The type comes from RS `linkNext` (compiled into the SNG as `NOTE_MASK_PARENT`): linked → legato, otherwise shift. The slide's target is the following same-string note; if the RS chart has none (a single-note slide), the converter synthesizes a landing note at the `slideTo` fret so the tail has somewhere to go.
+- **Slide out down / up** (notes 22 / 23) are unpitched (`slideUnpitchTo`); direction comes from the sign relative to the fretted position, and no target note is needed.
+
+A slide never emits pitch bend, and it suppresses bend/vibrato on the same note (mixing them builds multiple tails and renders incorrectly).
+
+**Pitch bend** (bends and vibrato only)
+
 - **Bends** - the SNG `BEND_DATA_SECTION` is parsed directly; each timed step emits a pitch bend event at the corresponding semitone value. Pitch bend resets to neutral at note end.
 - **Vibrato** - a sinusoidal pitch-bend sweep at 5 Hz / ±384 units (~0.3 semitone peak) for the duration of the note. Pitch bend resets to neutral at note end.
 
@@ -226,7 +235,7 @@ The DDS texture from the PSARC is converted to JPEG at up to 512 × 512 using Pi
 
 - **Finger placement on single notes** - RS CDLC charters rarely assign explicit finger data to individual (non-chord) notes, so finger signals are only emitted for chord notes where the data is present
 - **Thumb visualization** - note 35 (Thumb) is not yet visualized in Immerrock (per the developer); the signal is emitted but has no in-game effect currently
-- **Chord slide pitch bend** - slide pitch bend is only generated for single notes. RS stores per-string slide targets for chords in a separate ChordNotes section; that data is not yet parsed, so chord slides emit the ch15 Slide marker (note 20) only
+- **SNG chord slides** - per-string slide targets for chords live in the SNG `CHORD_NOTES_SECTION`, which is not yet parsed, so chord slides from SNG binaries are not marked. Single-note slides and chord slides from XML arrangements are handled
 - **Vocals** in RS CDLCs rarely include beat timing; `Lyrics.txt` is generated but may be empty
 - **Drop / open tunings** that go below MIDI note 0 or above 127 are clamped
 
