@@ -67,14 +67,22 @@ def read_rs_xml(path: str) -> dict:
         for s in sec_el.findall('section'):
             sections.append({'name': s.get('name', ''), 'time': f(s, 'startTime')})
 
-    # chordId → chord name, for chord text meta
-    chord_names = {}
+    # chordId → template: name, EoF displayName, and per-string fret/finger.
+    # Used for chord text meta and to recognise arpeggio handshapes.
+    chord_templates = []
     ct_el = root.find('chordTemplates')
     if ct_el is not None:
-        for idx, ct in enumerate(ct_el.findall('chordTemplate')):
-            chord_names[idx] = ct.get('chordName', '')
+        for ct in ct_el.findall('chordTemplate'):
+            chord_templates.append({
+                'name':    ct.get('chordName', ''),
+                'display': ct.get('displayName', ''),
+                'frets':   [i(ct, f'fret{n}', -1)   for n in range(NUM_STRINGS)],
+                'fingers': [i(ct, f'finger{n}', -1) for n in range(NUM_STRINGS)],
+            })
+    chord_names = {idx: t['name'] for idx, t in enumerate(chord_templates)}
 
     notes = []
+    arpeggios = []
 
     def add_note(el, chord_name=''):
         xml_string = i(el, 'string')
@@ -113,12 +121,33 @@ def read_rs_xml(path: str) -> dict:
                 for cn in ch.findall('chordNote'):
                     add_note(cn, chord_name=name)
 
+        # Arpeggio regions: a handShape whose chord template EoF exported as an
+        # arpeggio (displayName ends in "-arp"). The notes inside are plain
+        # individual notes; the shape supplies the frame + finger data.
+        # Strings are flipped to build_midi's convention, same as add_note.
+        hs_el = lvl.find('handShapes')
+        if hs_el is not None:
+            for hs in hs_el.findall('handShape'):
+                cid = i(hs, 'chordId', -1)
+                if not (0 <= cid < len(chord_templates)):
+                    continue
+                t = chord_templates[cid]
+                if not t['display'].endswith('-arp'):
+                    continue
+                strings = [((NUM_STRINGS - 1) - s, t['frets'][s], t['fingers'][s])
+                           for s in range(NUM_STRINGS) if t['frets'][s] >= 0]
+                arpeggios.append({
+                    'start': f(hs, 'startTime'), 'end': f(hs, 'endTime'),
+                    'chord_name': t['name'], 'strings': strings,
+                })
+
     notes.sort(key=lambda x: x['time'])
     return {
         'arr_type': 'lead', 'title': root.findtext('title', ''),
         'tuning': tuning, 'avg_tempo': f(root, 'averageTempo', 120.0) or 120.0,
         'song_length': f(root, 'songLength'),
         'beats': beats, 'sections': sections, 'notes': notes, 'vocals': [],
+        'arpeggios': arpeggios,
     }
 
 
