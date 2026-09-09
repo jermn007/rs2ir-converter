@@ -178,14 +178,16 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
     skip(r_i32() * 44)
 
     # ── CHORD_SECTION  (CHORD<size=72>: ulong+byte[6]+byte[6]+long[6]+char[32]) ─
+    CHORD_MASK_ARPEGGIO = 0x00000001   # RSToolkit sets this when displayName ends in "arp"
     chord_templates = []
     for _ in range(r_i32()):
-        skip(4)                                  # ulong Mask
+        mask    = r_u32()                        # ulong Mask
         frets   = [r_u8() for _ in range(6)]    # byte[6] Frets (255 = not played)
         fingers = [r_u8() for _ in range(6)]    # byte[6] Fingers (0=none,1=index..5=thumb)
         skip(24)                                 # Notes (6×float, unused)
         name    = r_str(32)                      # char[32] chord name (e.g. "Emin", "D5/A")
-        chord_templates.append({'frets': frets, 'fingers': fingers, 'name': name})
+        chord_templates.append({'frets': frets, 'fingers': fingers, 'name': name,
+                                'arpeggio': bool(mask & CHORD_MASK_ARPEGGIO)})
 
     # ── CHORD_NOTES_SECTION  (CHORD_NOTES<size=2376>) ────────────
     skip(r_i32() * 2376)
@@ -251,13 +253,26 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
     # RocksmithToolkit's Sng2014 constants — a slide note with PARENT set is a
     # legato slide; without it, a shift slide.
     NOTE_MASK_PARENT     = 0x08000000
-    all_arrs = []   # list of (difficulty, notes)
+    all_arrs = []   # list of (difficulty, notes, handshapes)
     for _ in range(r_i32()):
         difficulty = r_i32()            # Difficulty (long)
         skip(r_i32() * 28)     # ANCHOR_SECTION         (ANCHOR<size=28>)
         skip(r_i32() * 12)     # ANCHOR_EXTENSION       (ANCHOR_EXTENSION<size=12>)
-        skip(r_i32() * 20)     # FINGERPRINT_SECTION 1  (FINGERPRINT<size=20>)
-        skip(r_i32() * 20)     # FINGERPRINT_SECTION 2
+
+        # FINGERPRINT sections (FINGERPRINT<size=20>: ChordId(long) + StartTime,
+        # EndTime, FirstNoteTime, LastNoteTime (floats)). Section 1 holds regular
+        # hand shapes; section 2 holds ARPEGGIO hand shapes (RSToolkit writes
+        # handshapes whose chord displayName ends in "arp" there). We keep both
+        # and tag the array so an arpeggio can also be recognised via the chord
+        # template's CHORD_MASK_ARPEGGIO if a tool filed it in section 1.
+        level_handshapes = []   # (chord_id, start, end, in_arpeggio_section)
+        for in_arp_section in (False, True):
+            for _ in range(r_i32()):
+                fp_chord = r_i32()
+                fp_start = r_f32()
+                fp_end   = r_f32()
+                skip(8)            # FirstNoteTime, LastNoteTime
+                level_handshapes.append((fp_chord, fp_start, fp_end, in_arp_section))
 
         arr_notes = []
         for _ in range(r_i32()):   # NOTES_SECTION
@@ -339,7 +354,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
         skip(r_i32() * 4)   # AverageNotesPerIteration float[]
         skip(r_i32() * 4)   # NotesInIteration1 long[]
         skip(r_i32() * 4)   # NotesInIteration2 long[]
-        all_arrs.append((difficulty, arr_notes))
+        all_arrs.append((difficulty, arr_notes, level_handshapes))
 
     # Combine all arrangements: each arrangement is the full song at a specific
     # per-phrase difficulty mix.  Take the union — for any (time, string, fret)
@@ -347,7 +362,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
     # (full chord with name, correct finger/effects) wins the deduplication.
     seen_keys: set[tuple] = set()
     notes: list[dict] = []
-    for _, arr_notes in sorted(all_arrs, key=lambda x: x[0], reverse=True):  # high→low
+    for _, arr_notes, _ in sorted(all_arrs, key=lambda x: x[0], reverse=True):  # high→low
         for n in arr_notes:
             # Round time to nearest 5 ms to tolerate float imprecision
             k = (round(n['time'] * 200), n['string'], n['fret'])
@@ -355,6 +370,32 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
                 seen_keys.add(k)
                 notes.append(n)
     notes.sort(key=lambda n: n['time'])
+
+    # Arpeggio regions, in the same shape the XML reader produces so build_midi
+    # emits the Immerrock soft chord frame / fingers identically for both paths.
+    # A handshape is an arpeggio if it sits in FINGERPRINT section 2, or if its
+    # chord template carries CHORD_MASK_ARPEGGIO. Same high→low dedupe as notes.
+    tmpl_width = 4 if arr_type == 'bass' else 6
+    seen_arps: set[tuple] = set()
+    arpeggios: list[dict] = []
+    for _, _, level_handshapes in sorted(all_arrs, key=lambda x: x[0], reverse=True):
+        for cid, start, end, in_arp_section in level_handshapes:
+            if not (0 <= cid < len(chord_templates)):
+                continue
+            tmpl = chord_templates[cid]
+            if not (in_arp_section or tmpl['arpeggio']):
+                continue
+            k = (round(start * 200), cid)
+            if k in seen_arps:
+                continue
+            seen_arps.add(k)
+            # SNG templates index strings 0 = low E; flip to RS convention
+            # (0 = high e) exactly like chord notes above.
+            strings = [((tmpl_width - 1) - s, tmpl['frets'][s], tmpl['fingers'][s])
+                       for s in range(tmpl_width) if tmpl['frets'][s] != 255]
+            arpeggios.append({'start': start, 'end': end,
+                              'chord_name': tmpl['name'], 'strings': strings})
+    arpeggios.sort(key=lambda a: a['start'])
 
     # ── METADATA ─────────────────────────────────────────────────
     # double×4 + float×2 + byte + char[32] + short + float + long + short[N] + float×2 + long
@@ -391,6 +432,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
         'sections':  sections,
         'notes':     notes,
         'vocals':    vocals,
+        'arpeggios': arpeggios,
     }
 
 
