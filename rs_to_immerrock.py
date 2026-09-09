@@ -253,6 +253,10 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
     # RocksmithToolkit's Sng2014 constants — a slide note with PARENT set is a
     # legato slide; without it, a shift slide.
     NOTE_MASK_PARENT     = 0x08000000
+    # Set by RSToolkit on every note inside an arpeggio handshape. Not needed
+    # to render (the FINGERPRINT regions drive that) but kept on the note as
+    # an independent cross-check that region detection agrees with the notes.
+    NOTE_MASK_ARPEGGIO   = 0x20000000
     all_arrs = []   # list of (difficulty, notes, handshapes)
     for _ in range(r_i32()):
         difficulty = r_i32()            # Difficulty (long)
@@ -313,6 +317,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
             # linkNext (legato) is compiled into the SNG as NOTE_MASK_PARENT on the
             # slide note, so a pitched slide with PARENT set is legato, else shift.
             link_next = 1 if (note_mask & NOTE_MASK_PARENT) else 0
+            arp_note  = bool(note_mask & NOTE_MASK_ARPEGGIO)
 
             if note_mask & NOTE_MASK_CHORD:
                 if 0 <= chord_id < len(chord_templates):
@@ -348,6 +353,7 @@ def _parse_sng_binary(data: bytes, arr_type: str = 'lead') -> dict:
                                   'slide_to': slide_to,
                                   'slide_unpitch_to': slide_unpitch,
                                   'link_next': link_next,
+                                  'arp_note': arp_note,
                                   'bend_data': bend_data,
                                   'chord_name': ''})
 
