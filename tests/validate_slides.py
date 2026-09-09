@@ -41,7 +41,11 @@ NUM_STRINGS = 6
 # ────────────────────────────────────────────────────────────────
 #  Read the real RS/EoF arrangement XML into build_midi's arr dict
 # ────────────────────────────────────────────────────────────────
-def read_rs_xml(path: str) -> dict:
+def read_rs_xml(path: str, num_strings: int = NUM_STRINGS) -> dict:
+    """Read a real RS/EoF arrangement XML into build_midi's arr dict.
+    ``num_strings`` is 6 for guitar, 4 for bass (drives the string flip and
+    how many template fret/finger slots to read)."""
+    NUM_STRINGS = num_strings  # noqa: N806 — shadow module default for this call
     root = ET.parse(path).getroot()
 
     def f(el, a, d=0.0):

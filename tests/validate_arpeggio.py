@@ -34,17 +34,28 @@ sys.path.insert(0, os.path.join(_REPO, 'tests'))
 import rs_to_immerrock as R                      # noqa: E402
 from validate_slides import read_rs_xml, diff_section  # noqa: E402
 
-ARP      = os.path.join(_REPO, 'Updates-2026-08', 'Arpeggio')
-XML_PATH = os.path.join(ARP, 'PART REAL_GUITAR_RS2.xml')
-REF_MID  = os.path.join(ARP, 'GGLead.mid')
+ARP = os.path.join(_REPO, 'Updates-2026-08', 'Arpeggio')
+
+# (label, xml, reference midi, num_strings, is_bass, track name, onset tolerance)
+# Onset tolerance: EoF writes note times to 3 decimals, dropping up to ~1 ms
+# (~0.7 tick at 90 BPM) versus the positions its own MIDI was rendered from.
+# Grid-aligned notes (the guitar test) survive that rounding, so it stays
+# strict; the hand-placed, off-grid bass test needs +/-1 tick. Production
+# (SNG float32 times) is unaffected.
+CASES = [
+    ('Guitar', 'PART REAL_GUITAR_RS2.xml', 'GGLead.mid', 6, False, 'REAL_GUITAR', 0),
+    ('Bass',   'PART REAL_BASS_RS2.xml',   'GGBass.mid', 4, True,  'REAL_BASS',   1),
+]
 
 FINGER_NOTES = {31: 'Index', 32: 'Middle', 33: 'Ring', 34: 'Little', 35: 'Thumb'}
 SLIDE_NOTES  = {20, 21, 22, 23}
-NUM_STRINGS  = 6
 
 
-def normalise(mid):
-    """Split a track into the event classes the arpeggio encoding uses."""
+def normalise(mid, num_strings):
+    """Split a track into the event classes the arpeggio encoding uses.
+    Played notes live on channels < num_strings; frame ghost notes on
+    num_strings..14 (Immerrock offsets the frame by the string count)."""
+    NUM_STRINGS = num_strings
     track = mid.tracks[1] if len(mid.tracks) > 1 else mid.tracks[0]
     played, frames, fingers, texts, slides = [], [], [], [], []
     frame_on = {}
@@ -83,11 +94,64 @@ def normalise(mid):
     }
 
 
-def main():
+FRAME_OFF_TOL = 2  # ticks
+
+
+def diff_frames(ref, ours, tol=FRAME_OFF_TOL):
+    """Frame notes must match exactly on (start, channel, note); the note-off
+    may differ by up to `tol` ticks. EoF writes handShape endTime to 3 decimals
+    so the reference's off tick carries sub-tick precision the XML has lost;
+    the resulting +/-1 tick (~1.4 ms) is noise, not a converter error."""
+    ours_left = list(ours)
+    missing = []
+    for st, en, ch, note in ref:
+        hit = next((o for o in ours_left
+                    if o[0] == st and o[2] == ch and o[3] == note and abs(o[1] - en) <= tol), None)
+        if hit is None:
+            missing.append((st, en, ch, note))
+        else:
+            ours_left.remove(hit)
+    ok = not missing and not ours_left
+    print(f"\n{'PASS' if ok else 'FAIL'} Frame ghost notes (ch6-14; off tick +/-{tol}): "
+          f"{len(ref)} expected, {len(ours)} produced"
+          f"{'' if ok else f' - {len(missing)} missing, {len(ours_left)} extra'}")
+    for m in missing:
+        print(f"    MISSING (in reference, not ours):  tick={m[0]:>6}->{m[1]:<6} ch={m[2]} note={m[3]}")
+    for e in ours_left:
+        print(f"    EXTRA   (in ours, not reference):  tick={e[0]:>6}->{e[1]:<6} ch={e[2]} note={e[3]}")
+    return ok
+
+
+def diff_onsets(title, ref, ours, tol, fmt):
+    """Like diff_section, but the leading tick may differ by up to `tol`;
+    every other field must match exactly. tol=0 is an exact set diff."""
+    if tol == 0:
+        return diff_section(title, ref, ours, fmt)
+    ours_left = list(ours)
+    missing = []
+    for r in ref:
+        hit = next((o for o in ours_left if o[1:] == r[1:] and abs(o[0] - r[0]) <= tol), None)
+        if hit is None:
+            missing.append(r)
+        else:
+            ours_left.remove(hit)
+    ok = not missing and not ours_left
+    print(f"\n{'PASS' if ok else 'FAIL'} {title} (tick +/-{tol}): "
+          f"{len(ref)} expected, {len(ours)} produced"
+          f"{'' if ok else f' - {len(missing)} missing, {len(ours_left)} extra'}")
+    for m in missing:
+        print(f"    MISSING (in reference, not ours):  {fmt(m)}")
+    for e in ours_left:
+        print(f"    EXTRA   (in ours, not reference):  {fmt(e)}")
+    return ok
+
+
+def run_case(label, xml, ref_mid, num_strings, is_bass, track, tol):
     import mido
-    ref  = normalise(mido.MidiFile(REF_MID))
-    arr  = read_rs_xml(XML_PATH)
-    ours = normalise(R.build_midi(arr, 'REAL_GUITAR', is_bass=False))
+    print(f"\n{'#' * 60}\n#  {label} — {xml} vs {ref_mid}\n{'#' * 60}")
+    ref  = normalise(mido.MidiFile(os.path.join(ARP, ref_mid)), num_strings)
+    arr  = read_rs_xml(os.path.join(ARP, xml), num_strings=num_strings)
+    ours = normalise(R.build_midi(arr, track, is_bass=is_bass), num_strings)
 
     print(f"Parsed {len(arr['notes'])} notes / {len(arr['beats'])} beats / "
           f"{len(arr['arpeggios'])} arpeggio regions from XML.")
@@ -96,14 +160,12 @@ def main():
         print(f"    {a['chord_name']:6} {a['start']:6.3f}->{a['end']:6.3f}  [{strs}]")
 
     ok = True
-    ok &= diff_section(
-        'Played notes (ch0-5 onsets)', ref['played'], ours['played'],
+    ok &= diff_onsets(
+        f'Played notes (ch0-{num_strings - 1} onsets)', ref['played'], ours['played'], tol,
         lambda m: f"tick={m[0]:>6} ch={m[1]} note={m[2]}")
-    ok &= diff_section(
-        'Frame ghost notes (ch6-14, on->off)', ref['frames'], ours['frames'],
-        lambda m: f"tick={m[0]:>6}->{m[1]:<6} ch={m[2]} note={m[3]}")
-    ok &= diff_section(
-        'Finger markers (ch15 31-35)', ref['fingers'], ours['fingers'],
+    ok &= diff_frames(ref['frames'], ours['frames'])
+    ok &= diff_onsets(
+        'Finger markers (ch15 31-35)', ref['fingers'], ours['fingers'], tol,
         lambda m: f"tick={m[0]:>6} note={m[1]} ({FINGER_NOTES[m[1]]:6}) vel={m[2]}")
     ok &= diff_section(
         'Chord-name text', ref['texts'], ours['texts'],
@@ -115,9 +177,18 @@ def main():
     print(f"\n{'PASS' if quiet else 'FAIL'} No stray signals: slides={len(ours['slides'])} "
           f"nonzero_pb={ours['nonzero_pb']} (reference: 0 / 0)")
 
+    print(f"\n{label}: {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def main():
+    results = {label: run_case(label, *rest) for label, *rest in CASES}
     print("\n" + ("=" * 60))
-    print("RESULT:", "PASS" if ok else "FAIL (expected until arpeggio support lands)")
-    return 0 if ok else 1
+    for label, ok in results.items():
+        print(f"  {label:8} {'PASS' if ok else 'FAIL'}")
+    all_ok = all(results.values())
+    print("RESULT:", "PASS" if all_ok else "FAIL")
+    return 0 if all_ok else 1
 
 
 if __name__ == '__main__':

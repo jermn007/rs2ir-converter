@@ -752,10 +752,20 @@ TICKS_PER_BEAT = 480
 VELOCITY       = 79   # standard note velocity in EoF
 
 
+def _round_tick(x: float) -> int:
+    """Round a fractional tick to the nearest whole tick (half rounds up).
+
+    Truncating with int() floored every fractional position, drifting notes
+    up to a full tick early whenever times don't land on whole ticks (e.g.
+    90 BPM); rounding matches EoF's output exactly.
+    """
+    return int(x + 0.5)
+
+
 def _time_to_ticks(note_time: float, beats: list[dict]) -> int:
     """Convert absolute time (seconds) to MIDI ticks using the beat map."""
     if not beats:
-        return int(note_time * TICKS_PER_BEAT * 2)  # fallback ~120 BPM
+        return _round_tick(note_time * TICKS_PER_BEAT * 2)  # fallback ~120 BPM
 
     # Find surrounding beats
     for i in range(len(beats) - 1):
@@ -764,14 +774,14 @@ def _time_to_ticks(note_time: float, beats: list[dict]) -> int:
             fraction = (note_time - t0) / (t1 - t0)
             tick0 = beats[i]['_tick']
             tick1 = beats[i+1]['_tick']
-            return int(tick0 + fraction * (tick1 - tick0))
+            return _round_tick(tick0 + fraction * (tick1 - tick0))
 
     # Beyond last beat: extrapolate
     if len(beats) >= 2:
         last_two_dt = beats[-1]['time'] - beats[-2]['time']
         if last_two_dt > 0:
             extra_beats = (note_time - beats[-1]['time']) / last_two_dt
-            return int(beats[-1]['_tick'] + extra_beats * TICKS_PER_BEAT)
+            return _round_tick(beats[-1]['_tick'] + extra_beats * TICKS_PER_BEAT)
 
     return beats[-1]['_tick']
 
@@ -850,14 +860,41 @@ def _synthesize_slide_targets(notes: list[dict]) -> list[dict]:
     return sorted(notes + synth, key=lambda n: n['time'])
 
 
+def _apply_arpeggio_fingers(notes: list[dict], arpeggios: list[dict]) -> list[dict]:
+    """Give each note inside an arpeggio handShape the finger its string has in
+    the arpeggio's chord template.
+
+    Immerrock marks every played note of an arpeggio with a finger placement
+    (ch15 31–35); routing the template finger onto the note lets the normal
+    per-note finger emission produce those markers. Notes that already carry a
+    finger (real chord notes) are left alone.
+    """
+    if not arpeggios:
+        return notes
+    EPS = 0.005  # seconds — handShape bounds vs note onsets
+    out = []
+    for n in notes:
+        if not (1 <= n.get('finger', 0) <= 5):
+            for a in arpeggios:
+                if not (a['start'] - EPS <= n['time'] <= a['end'] + EPS):
+                    continue
+                f = next((fg for s, _fr, fg in a['strings'] if s == n['string']), 0)
+                if 1 <= f <= 5:
+                    n = dict(n, finger=f)
+                    break
+        out.append(n)
+    return out
+
+
 def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFile:
     """
     Convert a parsed RS arrangement dict to a mido MidiFile
     matching the Immerrock format.
     """
-    beats  = _assign_beat_ticks(arr['beats'])
-    notes  = _synthesize_slide_targets(arr['notes'])
-    tuning = arr['tuning']
+    beats     = _assign_beat_ticks(arr['beats'])
+    arpeggios = arr.get('arpeggios') or []
+    notes     = _apply_arpeggio_fingers(_synthesize_slide_targets(arr['notes']), arpeggios)
+    tuning    = arr['tuning']
 
     # ── Pre-roll offset ───────────────────────────────────────
     # Beat times from RS are in absolute audio seconds (t=0 = OGG start).
@@ -1008,6 +1045,16 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             note.get('bend_data', []),
         ))
 
+    # Arpeggio handShapes: label the region at its start tick (so the fallback
+    # below leaves it alone) and keep the tick spans for frame emission.
+    arp_regions: list[tuple] = []
+    for a in arpeggios:
+        start_tick = _time_to_ticks(a['start'], beats)
+        end_tick   = _time_to_ticks(a['end'],   beats)
+        if a.get('chord_name'):
+            chord_name_at_tick[start_tick] = a['chord_name']
+        arp_regions.append((start_tick, end_tick, a['strings']))
+
     # Music-theory fallback: for ticks with no template name, try to identify
     # power chord shapes from the pitch classes. Checks all pairs of pitch classes
     # present in the chord, so it works even if extra notes are present.
@@ -1044,6 +1091,33 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
             events.append((on_tick,  'on',  channel, midi_note, VELOCITY))
             events.append((off_tick, 'off', channel, midi_note, 0))
 
+    # Arpeggio "soft chord frame" (Immerrock 0.13): for every string in the
+    # arpeggio's chord template, a ghost note on channel + num_strings (guitar
+    # ch6-11, bass ch4-7 — verified against Motanum's guitar and bass refs) at
+    # the template fret, spanning the whole handShape, plus a burst of each
+    # string's finger at the region start. Per-note fingers (below) are deduped
+    # against the burst so the region's first note isn't marked twice.
+    ARP_FRAME_CH_OFFSET = num_strings
+    seen_fingers: set[tuple] = set()
+    for start_tick, end_tick, strings in arp_regions:
+        end_tick = max(end_tick, start_tick + 1)
+        for rs_str, fret, finger in strings:
+            if rs_str >= num_strings:
+                continue
+            ch       = (num_strings - 1) - rs_str
+            frame_ch = ch + ARP_FRAME_CH_OFFSET
+            if frame_ch >= 15:
+                continue  # ch15 is the modifier channel
+            note_val = max(0, min(127, open_base[ch] + fret))
+            events.append((start_tick, 'on',  frame_ch, note_val, VELOCITY))
+            events.append((end_tick,   'off', frame_ch, note_val, 0))
+            if 1 <= finger <= 5:
+                key = (start_tick, 30 + finger, ch * 5 + 1)
+                if key not in seen_fingers:
+                    seen_fingers.add(key)
+                    events.append((start_tick, 'mod', 15, key[1], key[2]))
+                    events.append((start_tick, 'off', 15, key[1], 0))
+
     # ch15 finger placement (notes 31–35) and note effects (notes 12–20).
     # Velocity encodes which string: channel * 5 + 1
     # ch0->1, ch1->6, ch2->11, ch3->16, ch4->21, ch5->26  (matches EoF convention)
@@ -1052,8 +1126,11 @@ def build_midi(arr: dict, track_name: str, is_bass: bool = False) -> mido.MidiFi
 
         if 1 <= finger <= 5:
             fn = 30 + finger  # 31=Index, 32=Middle, 33=Ring, 34=Little, 35=Thumb
-            events.append((on_tick, 'mod', 15, fn, str_vel))
-            events.append((on_tick, 'off', 15, fn, 0))
+            key = (on_tick, fn, str_vel)
+            if key not in seen_fingers:   # skip if the arpeggio burst already marked it
+                seen_fingers.add(key)
+                events.append((on_tick, 'mod', 15, fn, str_vel))
+                events.append((on_tick, 'off', 15, fn, 0))
 
         for eff, eff_note in CH15_EFFECTS.items():
             if eff in effects:

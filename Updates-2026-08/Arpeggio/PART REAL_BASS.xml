@@ -1,0 +1,112 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<song version="4">
+<!-- EOF v1.8RC15 (9-8-2026) -->
+  <title>ArpeggioTest</title>
+  <arrangement>Bass</arrangement>
+  <part>1</part>
+  <offset>0.000</offset>
+  <songLength>22.332</songLength>
+  <lastConversionDateTime>9-9-26 12:35</lastConversionDateTime>
+  <startBeat>0.000</startBeat>
+  <averageTempo>92.500</averageTempo>
+  <tuning string0="0" string1="0" string2="0" string3="0" string4="0" string5="0" />
+  <artistName>DebugSongs</artistName>
+  <albumName></albumName>
+  <albumYear></albumYear>
+  <arrangementProperties represent="1" standardTuning="1" nonStandardChords="0" barreChords="0" powerChords="0" dropDPower="0" openChords="0" fingerPicking="0" pickDirection="0" doubleStops="0" palmMutes="0" harmonics="0" pinchHarmonics="0" hopo="0" tremolo="0" slides="0" unpitchedSlides="0" bends="0" tapping="0" vibrato="0" fretHandMutes="0" slapPop="0" twoFingerPicking="0" fifthsAndOctaves="0" syncopation="0" bassPick="0" />
+  <phrases count="2">
+    <phrase name="COUNT" maxDifficulty="0" />
+    <phrase name="END" maxDifficulty="0" />
+  </phrases>
+  <phraseIterations count="2">
+    <phraseIteration time="0.000" phraseId="0"/>
+    <phraseIteration time="10.667" phraseId="1"/>
+  </phraseIterations>
+  <linkedDiffs count="0"/>
+  <phraseProperties count="0"/>
+  <chordTemplates count="4">
+    <chordTemplate chordName="F5" finger0="1" finger1="3" finger2="4" finger3="-1" finger4="-1" finger5="-1" fret0="1" fret1="3" fret2="3" fret3="-1" fret4="-1" fret5="-1"/>
+    <chordTemplate chordName="A#5" finger0="-1" finger1="1" finger2="3" finger3="4" finger4="-1" finger5="-1" fret0="-1" fret1="1" fret2="3" fret3="3" fret4="-1" fret5="-1"/>
+    <chordTemplate chordName="C5" finger0="1" finger1="1" finger2="3" finger3="-1" finger4="-1" finger5="-1" fret0="3" fret1="3" fret2="5" fret3="-1" fret4="-1" fret5="-1"/>
+    <chordTemplate chordName="Fmin" finger0="1" finger1="3" finger2="4" finger3="1" finger4="-1" finger5="-1" fret0="1" fret1="3" fret2="3" fret3="1" fret4="-1" fret5="-1"/>
+  </chordTemplates>
+  <fretHandMuteTemplates count="0"/>
+  <ebeats count="37">
+    <ebeat time="0.000" measure="1"/>
+    <ebeat time="0.667" measure="-1"/>
+    <ebeat time="1.333" measure="-1"/>
+    <ebeat time="2.000" measure="-1"/>
+    <ebeat time="2.667" measure="2"/>
+    <ebeat time="3.333" measure="-1"/>
+    <ebeat time="4.000" measure="-1"/>
+    <ebeat time="4.667" measure="-1"/>
+    <ebeat time="5.333" measure="3"/>
+    <ebeat time="6.000" measure="-1"/>
+    <ebeat time="6.667" measure="-1"/>
+    <ebeat time="7.333" measure="-1"/>
+    <ebeat time="8.000" measure="4"/>
+    <ebeat time="8.667" measure="-1"/>
+    <ebeat time="9.333" measure="-1"/>
+    <ebeat time="10.000" measure="-1"/>
+    <ebeat time="10.667" measure="5"/>
+    <ebeat time="11.333" measure="-1"/>
+    <ebeat time="12.000" measure="-1"/>
+    <ebeat time="12.667" measure="-1"/>
+    <ebeat time="13.333" measure="6"/>
+    <ebeat time="14.000" measure="-1"/>
+    <ebeat time="14.667" measure="-1"/>
+    <ebeat time="15.333" measure="-1"/>
+    <ebeat time="16.000" measure="7"/>
+    <ebeat time="16.667" measure="-1"/>
+    <ebeat time="17.333" measure="-1"/>
+    <ebeat time="18.000" measure="-1"/>
+    <ebeat time="18.667" measure="8"/>
+    <ebeat time="19.333" measure="-1"/>
+    <ebeat time="20.000" measure="-1"/>
+    <ebeat time="20.667" measure="-1"/>
+    <ebeat time="21.333" measure="9"/>
+    <ebeat time="22.000" measure="-1"/>
+    <ebeat time="22.667" measure="-1"/>
+    <ebeat time="23.333" measure="-1"/>
+    <ebeat time="24.000" measure="10"/>
+  </ebeats>
+  <sections count="1">
+    <section name="noguitar" number="1" startTime="10.667"/>
+  </sections>
+  <events count="0"/>
+  <levels count="1">
+    <level difficulty="0">
+      <notes count="16">
+        <note time="0.000" bend="0" fret="1" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="0" sustain="0.647" tremolo="0"/>
+        <note time="0.650" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="1" sustain="0.677" tremolo="0"/>
+        <note time="1.330" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="2" sustain="0.667" tremolo="0"/>
+        <note time="2.000" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="1" sustain="0.367" tremolo="0"/>
+        <note time="2.670" bend="0" fret="1" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="1" sustain="0.657" tremolo="0"/>
+        <note time="3.330" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="2" sustain="0.677" tremolo="0"/>
+        <note time="4.010" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="3" sustain="0.667" tremolo="0"/>
+        <note time="4.680" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="2" sustain="0.347" tremolo="0"/>
+        <note time="5.330" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="1" sustain="0.687" tremolo="0"/>
+        <note time="6.020" bend="0" fret="5" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="2" sustain="0.657" tremolo="0"/>
+        <note time="6.680" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="0" sustain="0.647" tremolo="0"/>
+        <note time="7.330" bend="0" fret="5" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="2" sustain="0.367" tremolo="0"/>
+        <note time="8.000" bend="0" fret="1" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="0" sustain="0.677" tremolo="0"/>
+        <note time="8.680" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="1" sustain="0.637" tremolo="0"/>
+        <note time="9.320" bend="0" fret="3" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="2" sustain="0.677" tremolo="0"/>
+        <note time="10.000" bend="0" fret="1" hammerOn="0" harmonic="0" hopo="0" ignore="0" palmMute="0" pluck="-1" pullOff="0" slap="-1" slideTo="-1" string="3" sustain="0.300" tremolo="0"/>
+      </notes>
+      <chords count="0"/>
+      <fretHandMutes count="0"/>
+      <anchors count="3">
+        <anchor time="0.000" fret="1"/>
+        <anchor time="5.330" fret="3"/>
+        <anchor time="8.000" fret="1"/>
+      </anchors>
+      <handShapes count="4">
+        <handShape chordId="0" endTime="2.367" startTime="0.000"/>
+        <handShape chordId="1" endTime="5.027" startTime="2.670"/>
+        <handShape chordId="2" endTime="7.697" startTime="5.330"/>
+        <handShape chordId="3" endTime="10.300" startTime="8.000"/>
+      </handShapes>
+    </level>
+  </levels>
+</song>
