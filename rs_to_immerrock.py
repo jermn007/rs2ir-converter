@@ -16,7 +16,7 @@
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
-__version__ = '1.2.3'
+__version__ = '1.3.0'
 
 import os, sys, zlib, struct, json, math, subprocess, shutil, tempfile, re
 import xml.etree.ElementTree as ET
