@@ -1652,10 +1652,21 @@ def convert_psarc(psarc_path: str, output_dir: str, vgmstream: str | None) -> bo
                 arr['year']      = str(manifest_meta.get('SongYear',     ''))
                 arr['genre']     = manifest_meta.get('SongGenre',        '')
                 arr['avg_tempo'] = manifest_meta.get('SongAverageTempo', 120)
-            arrangements.append(arr)
-            arr_type_map[arr_t] = arr
-            print(f"    ✓ {arr_t:10s} — {len(arr['notes'])} notes, "
-                  f"{len(arr['beats'])} beats  (SNG)")
+            # A PSARC can carry two arrangements of one type (e.g. a main lead
+            # plus a bonus/alt lead). Both map to the same GG*.mid, so keep the
+            # richer one (more notes) instead of letting the last one overwrite.
+            prev = arr_type_map.get(arr_t)
+            if prev is not None:
+                keep, drop = ((arr, prev) if len(arr['notes']) > len(prev['notes'])
+                              else (prev, arr))
+                arr_type_map[arr_t] = keep
+                print(f"    ⚠ {arr_t:10s} — second {arr_t} arrangement found; keeping "
+                      f"the richer one ({len(keep['notes'])} notes, dropped "
+                      f"{len(drop['notes'])})")
+            else:
+                arr_type_map[arr_t] = arr
+                print(f"    ✓ {arr_t:10s} — {len(arr['notes'])} notes, "
+                      f"{len(arr['beats'])} beats  (SNG)")
         except Exception as e:
             print(f"    ✗ SNG parse failed for {sp}: {e}")
 
@@ -1690,11 +1701,10 @@ def convert_psarc(psarc_path: str, output_dir: str, vgmstream: str | None) -> bo
             elif 'lead' in xp_lower:
                 arr['arr_type'] = 'lead'
 
-            # Skip arr_types already covered by SNG parsing
+            # Skip arr_types already covered by SNG parsing (SNG takes precedence)
             if arr['arr_type'] in arr_type_map:
                 continue
 
-            arrangements.append(arr)
             arr_type_map[arr['arr_type']] = arr
             print(f"    ✓ {arr['arr_type']:10s} — {len(arr['notes'])} notes, "
                   f"{len(arr['beats'])} beats  (XML)")
@@ -1703,6 +1713,8 @@ def convert_psarc(psarc_path: str, output_dir: str, vgmstream: str | None) -> bo
         finally:
             os.unlink(tmp_path)
 
+    # Exactly one arrangement per track type, in first-seen order.
+    arrangements = list(arr_type_map.values())
     if not arrangements:
         print("  ✗ No valid arrangements found.")
         return False
