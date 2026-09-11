@@ -8,7 +8,8 @@ the repo root:
 
     python tests/validate_arpeggio.py
 
-Inputs (in Updates-2026-08/Arpeggio/):
+Inputs (in Updates-2026-08/Arpeggio/, the Immerrock developer's private debug
+files — kept out of the repo; the harness skips cleanly when they are absent):
     PART REAL_GUITAR_RS2.xml   RS2014 (v7) EoF export we parse
     GGLead.mid                 reference MIDI (what we must match)
 
@@ -182,6 +183,10 @@ def run_case(label, xml, ref_mid, num_strings, is_bass, track, tol):
 
 
 def main():
+    if not all(os.path.isfile(os.path.join(ARP, f)) for _, xml, mid, *_ in CASES for f in (xml, mid)):
+        print("SKIP: debug fixtures not present (Updates-2026-08/Arpeggio/ holds the Immerrock "
+              "developer's private reference files and is kept out of the repo).")
+        return 0
     results = {label: run_case(label, *rest) for label, *rest in CASES}
     print("\n" + ("=" * 60))
     for label, ok in results.items():

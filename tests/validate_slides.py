@@ -8,7 +8,8 @@ slide encoding).  Run from the repo root:
 
     python tests/validate_slides.py
 
-Inputs (in Updates-2026-08/):
+Inputs (in Updates-2026-08/, the Immerrock developer's private debug files —
+kept out of the repo; the harness skips cleanly when they are absent):
     PART REAL_GUITAR_RS2.xml          RS2014 (v7) EoF export we parse
     Mid_GGLead_DebugSongs_Slides.mid  reference MIDI (what we must match)
 
@@ -197,6 +198,10 @@ def diff_section(title, ref, ours, fmt):
 
 def main():
     import mido
+    if not (os.path.isfile(XML_PATH) and os.path.isfile(REF_MID)):
+        print("SKIP: debug fixtures not present (Updates-2026-08/ holds the Immerrock "
+              "developer's private reference files and is kept out of the repo).")
+        return 0
     ref  = normalise(mido.MidiFile(REF_MID))
     arr  = read_rs_xml(XML_PATH)
     ours = normalise(R.build_midi(arr, 'REAL_GUITAR', is_bass=False))
