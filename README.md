@@ -132,6 +132,8 @@ A `.psarc` is a container archive used by CDLC packages. The table of contents (
 
 Modern CDLCs store note data as binary `.sng` files inside the PSARC (`songs/bin/generic/*.sng`). Older CDLCs fall back to XML arrangement files.
 
+If a PSARC carries two arrangements of the same type (e.g. a main lead plus a bonus/alternate lead), both would map to the same `GG*.mid`, so the converter keeps the richer one (more notes) and logs which was dropped.
+
 **SNG decryption** uses a separate **AES-256 custom counter mode**: each 16-byte block is XOR'd with `AES_ECB(key, IV+i)` where the IV (embedded at bytes 8–23 of the file) increments by one per block in big-endian carry fashion. After decryption the payload is a 4-byte uncompressed length followed by zlib-compressed binary data.
 
 **SNG binary parsing** reads the decompressed data sequentially through 14 typed sections:
@@ -187,16 +189,35 @@ Additional zero-duration note-on events on Channel 15 carry per-note metadata. V
 | 17 | Tapping |
 | 18 | Stroke down |
 | 19 | Stroke up |
-| 20 | Slide |
+| 20 | Legato slide (pitched, target note's mesh hidden) |
+| 21 | Shift slide (pitched, target re-plucked) |
+| 22 | Slide out down (unpitched, toward the nut) |
+| 23 | Slide out up (unpitched, toward the body) |
 | 31–35 | Finger placement: Index, Middle, Ring, Little, Thumb |
 
-Finger signals (31–35) are emitted for chord notes, which carry finger data from the RS chord template. Individual notes rarely have explicit finger assignments in RS CDLC data.
+Finger signals (31–35) are emitted for chord notes, which carry finger data from the RS chord template. Individual notes rarely have explicit finger assignments in RS CDLC data — except inside an arpeggio, where each note takes the finger its string has in the arpeggio's chord shape (see **Arpeggios** below).
 
-**Pitch bend**
+**Slides**
 
-Slides, bends, and vibrato are handled as distinct effect types. Priority order: slide > bend > vibrato.
+Slides are encoded entirely by the ch15 marker (notes 20–23) plus the notes themselves — **no pitch bend**. Immerrock rebuilds a pitched slide's tail toward the next note on the same string, so:
 
-- **Slides** - a 16-step linear pitch-bend sweep from neutral (0) to the target fret offset over the full sustain. The final event stays at the target pitch (no reset) so Immerrock can draw the slide trail to its endpoint.
+- **Legato / shift** (notes 20 / 21) are pitched. The type comes from RS `linkNext` (compiled into the SNG as `NOTE_MASK_PARENT`): linked → legato, otherwise shift. The slide's target is the following same-string note; if the RS chart has none (a single-note slide), the converter synthesizes a landing note at the `slideTo` fret so the tail has somewhere to go.
+- **Slide out down / up** (notes 22 / 23) are unpitched (`slideUnpitchTo`); direction comes from the sign relative to the fretted position, and no target note is needed.
+
+A slide never emits pitch bend, and it suppresses bend/vibrato on the same note (mixing them builds multiple tails and renders incorrectly).
+
+**Arpeggios**
+
+Immerrock (0.13+) draws an arpeggio as a *soft* chord frame showing the chord name and finger placement, while the notes inside are played one at a time. There is no dedicated ch15 note for it; per arpeggio hand-shape region the converter emits:
+
+- the **chord name** as a text meta event at the region start;
+- the **soft chord frame**: one ghost note per string in the arpeggio's chord shape, on MIDI channel `string + number of strings` (guitar → channels 6–11, bass → 4–7), at the shape's fret, lasting the whole region;
+- **finger placement** (31–35) from the shape's per-string fingering — a burst of every string's finger at the region start, then one marker per played note.
+
+Detection: in the SNG, arpeggio hand shapes live in the second `FINGERPRINT` section and their chord template carries `CHORD_MASK_ARPEGGIO` (notes inside also carry `NOTE_MASK_ARPEGGIO`, kept as a cross-check). In RS/EoF XML the chord template's `displayName` ends in `-arp`. Whether a song shows arpeggio frames depends entirely on the charter having authored arpeggio hand shapes in EoF — the same song can differ between CDLC versions.
+
+**Pitch bend** (bends and vibrato only)
+
 - **Bends** - the SNG `BEND_DATA_SECTION` is parsed directly; each timed step emits a pitch bend event at the corresponding semitone value. Pitch bend resets to neutral at note end.
 - **Vibrato** - a sinusoidal pitch-bend sweep at 5 Hz / ±384 units (~0.3 semitone peak) for the duration of the note. Pitch bend resets to neutral at note end.
 
@@ -226,7 +247,7 @@ The DDS texture from the PSARC is converted to JPEG at up to 512 × 512 using Pi
 
 - **Finger placement on single notes** - RS CDLC charters rarely assign explicit finger data to individual (non-chord) notes, so finger signals are only emitted for chord notes where the data is present
 - **Thumb visualization** - note 35 (Thumb) is not yet visualized in Immerrock (per the developer); the signal is emitted but has no in-game effect currently
-- **Chord slide pitch bend** - slide pitch bend is only generated for single notes. RS stores per-string slide targets for chords in a separate ChordNotes section; that data is not yet parsed, so chord slides emit the ch15 Slide marker (note 20) only
+- **SNG chord slides** - per-string slide targets for chords live in the SNG `CHORD_NOTES_SECTION`, which is not yet parsed, so chord slides from SNG binaries are not marked. Single-note slides and chord slides from XML arrangements are handled
 - **Vocals** in RS CDLCs rarely include beat timing; `Lyrics.txt` is generated but may be empty
 - **Drop / open tunings** that go below MIDI note 0 or above 127 are clamped
 
