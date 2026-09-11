@@ -22,6 +22,19 @@ import os, sys, zlib, struct, json, math, subprocess, shutil, tempfile, re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# Windows consoles often run a legacy code page (e.g. cp1252) that cannot
+# encode the box-drawing / check-mark glyphs in our status output, which
+# crashed CLI runs of the frozen exe on the very first print. Keep each
+# stream's own encoding but degrade unencodable glyphs to '?' instead of
+# raising. The GUI redirects stdout to a tkinter log widget and is unaffected.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        if _stream is not None and hasattr(_stream, 'reconfigure'):
+            _stream.reconfigure(errors='replace')
+    except Exception:
+        pass
+del _stream
+
 try:
     import soundfile as _sf
     _SOUNDFILE_OK = True
