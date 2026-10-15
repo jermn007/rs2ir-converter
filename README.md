@@ -1,4 +1,4 @@
-# RS2IR Converter
+# RS2IR CDLC Converter
 
 Convert **RS CDLC** (`.psarc`) files into [**IMMERROCK**](https://immerrock.com/) custom song packages for Meta Quest.
 
